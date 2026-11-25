@@ -170,7 +170,7 @@ final class Runtime: ObservableObject {
                 startMeter()
                 step = .python
                 state = .installing("Getting Python…")
-                try await run(uv, ["venv", "--python", "3.12", "--no-project", paths.runtime.appendingPathComponent(".venv").path])
+                try await run(uv, EngineInstall.venvArguments(at: paths.runtime.appendingPathComponent(".venv").path))
                 step = .engine
                 state = .installing("Installing the voice engine (\(Self.size))…")
                 try await run(uv, ["pip", "install", "--python", paths.python.path] + Self.packages)

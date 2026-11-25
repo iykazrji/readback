@@ -252,11 +252,14 @@ struct VoicesPage: View {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("The install didn't finish").font(.system(size: 13, weight: .semibold))
+                                // Two lines at most, the whole message on hover (and in the log). Text that
+                                // could grow to any height in the page header sent SwiftUI into a layout
+                                // loop that blanked the whole window (found 2026-11-25).
                                 Text(message)
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .lineLimit(2)
+                                    .help(message)
                             }
                             Spacer(minLength: 12)
                             Button("Try again") { runtime.retry(for: prefs) }
