@@ -376,6 +376,9 @@ private struct EngineRow: View {
                 downloadControl
                     .transition(.opacity)
                     .id(placeKind)
+                    // One height in every state (text, Download, the meter), so the rows match and a
+                    // row doesn't grow when its download starts.
+                    .frame(height: ControlMetrics.smallHeight + 2, alignment: .trailing)
             }
             .animation(Motion.spring(reduceMotion), value: placeKind)
             // Its natural width: the select button beside it takes all the spare room, and without
@@ -480,8 +483,11 @@ private struct EngineRow: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)   // a target you don't miss, not just the 14 pt icon
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .padding(.horizontal, -7)   // the target hangs past the icon; the icon keeps its place
                 .help("Cancel the download and delete what it fetched")
                 .accessibilityLabel("Cancel downloading \(name)")
             }

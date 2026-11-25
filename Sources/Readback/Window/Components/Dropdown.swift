@@ -43,14 +43,15 @@ struct Dropdown<Value: Hashable>: View {
 
     var body: some View {
         Button(action: toggle) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Text(selectedTitle)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(isOpen ? 180 : 0))
                     .animation(Motion.spring(reduceMotion), value: isOpen)
             }
+            .padding(.trailing, -2)   // the icon side 2 pt tighter than the text side, so it looks centred
         }
         .buttonStyle(.readback(.secondary))
         .background(AnchorView(box: anchor))

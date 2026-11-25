@@ -120,7 +120,9 @@ struct CardFormStyle: FormStyle {
                                     WindowColors.hairline.frame(height: 1).padding(.leading, Spacing.l)
                                 }
                                 row
-                                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                                    // Tall enough for a full-size control, so a row with a switch and a row with
+                                    // a dropdown are the same height.
+                                    .frame(maxWidth: .infinity, minHeight: ControlMetrics.height, alignment: .leading)
                                     .padding(.horizontal, Spacing.l)
                                     .padding(.vertical, Spacing.m)
                             }

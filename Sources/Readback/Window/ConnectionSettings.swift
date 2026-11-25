@@ -53,7 +53,7 @@ private struct ConnectionRow: View {
                 .transition(.opacity)
                 .id(stateKey)
         } label: {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {   // icon, words and button share one middle line
                 ToolTile(tool: home.tool, connected: ConnectionText.isWorking(row))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(home.title)

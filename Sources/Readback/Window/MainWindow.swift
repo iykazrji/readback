@@ -322,7 +322,9 @@ private struct Sidebar: View {
             HStack(spacing: 10) {
                 IconTile(symbol: section.symbol, color: section.tint)
                 Text(section.title)
-                    .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                    // One weight whether selected or not: a heavier selected title reflowed the
+                    // row. The row's fill says which one is selected.
+                    .font(.system(size: 13))
                     .foregroundStyle(.primary)
                 Spacer(minLength: 4)
                 if section == .history, replies.waitingCount > 0 {
