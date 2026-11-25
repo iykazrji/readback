@@ -318,8 +318,10 @@ struct SetupSheet: View {
         var body: some View {
             HStack(alignment: .top, spacing: 10) {
                 tile
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
+                VStack(alignment: .leading, spacing: 0) {
+                    // The name's line is as tall as the tile, so the name sits level with the tile's
+                    // centre whether or not there's a detail line under it (owner, 2026-11-25).
+                    Text(title).frame(height: 28)
                     if let detail {
                         Text(detail)
                             .font(.caption)

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Readback's checkbox, in place of the stock `.checkbox` toggle style: a 20 pt box with the
+/// Readback's checkbox, in place of the stock `.checkbox` toggle style: a 16 pt box with the
 /// controls' edge, and when ticked the solid plate with a check that pops in. The whole row is
 /// the target, Space toggles it when it has keyboard focus, and VoiceOver reads it as one
 /// checkbox with its label. Part of the owner's black-and-white look, 2026-11-25.
@@ -18,7 +18,7 @@ struct ReadbackCheckboxStyle: ToggleStyle {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
         var body: some View {
-            let box = RoundedRectangle(cornerRadius: 6, style: .continuous)
+            let box = RoundedRectangle(cornerRadius: 5, style: .continuous)
             HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     box.fill(configuration.isOn ? ControlMetrics.primaryFill(scheme)
@@ -27,14 +27,15 @@ struct ReadbackCheckboxStyle: ToggleStyle {
                         box.strokeBorder(ControlMetrics.hoverEdge(scheme), lineWidth: ControlMetrics.edgeWidth)
                     }
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(ControlMetrics.primaryText(scheme))
                         .scaleEffect(configuration.isOn || reduceMotion ? 1 : 0.4)
                         .opacity(configuration.isOn ? 1 : 0)
                 }
-                .frame(width: 20, height: 20)
-                .keyboardFocusRing(focused, RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .padding(.top, 4)   // level with a 28 pt tile's centre beside it
+                // 16 pt: the owner found 20 "slightly too big" (2026-11-25).
+                .frame(width: 16, height: 16)
+                .keyboardFocusRing(focused, box)
+                .padding(.top, 6)   // level with a 28 pt tile's centre beside it
                 configuration.label
             }
             .contentShape(Rectangle())
