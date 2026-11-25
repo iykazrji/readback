@@ -1,51 +1,69 @@
 import SwiftUI
 
-/// One set of measurements for every control in the window (buttons, dropdowns, the search
-/// field), so a row of them lines up exactly: the same height, corners, text size and fill.
-/// Heights are fixed, not the result of padding around text, which is how the first version
-/// ended up with a search field taller than the buttons beside it (owner, 2026-11-25).
+/// One set of measurements and tints for every control in the window, the setup sheet and the
+/// player (buttons, dropdowns, search, switch, segmented control, checkbox), so a row of them
+/// lines up exactly and they read as one set. Heights are fixed, not the result of padding
+/// around text.
+///
+/// Chosen by the owner on 2026-11-25 from clickable mockups: black-and-white plates (white and
+/// black tints only, no accent colour), 34 pt tall ("make them seem a lot more substantial"),
+/// each with a very thin edge. They turned down a brass direction and outline-only controls.
 enum ControlMetrics {
-    static let height: CGFloat = 28
-    static let smallHeight: CGFloat = 22
-    static let radius: CGFloat = 8
-    static let smallRadius: CGFloat = 6
-    static let fontSize: CGFloat = 13
-    static let smallFontSize: CGFloat = 11.5
-    static let padding: CGFloat = 12
-    static let smallPadding: CGFloat = 9
+    static let height: CGFloat = 34
+    static let smallHeight: CGFloat = 28
+    /// 0.29 × the height, rounded.
+    static let radius: CGFloat = 10
+    static let smallRadius: CGFloat = 8
+    static let fontSize: CGFloat = 13.5
+    static let smallFontSize: CGFloat = 12.5
+    static let padding: CGFloat = 16
+    static let smallPadding: CGFloat = 12
+    static let quietPadding: CGFloat = 10
+    static let smallQuietPadding: CGFloat = 8
+    /// The edge is a hairline drawn inside the shape (the owner didn't pick between this and 1 pt).
+    static let edgeWidth: CGFloat = 0.5
 
-    /// The resting fill of secondary buttons, dropdowns and the search field.
-    static func fill(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.055)
+    static func fill(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.08, light: 0.045) }
+    static func hoverFill(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.12, light: 0.075) }
+    static func pressFill(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.16, light: 0.10) }
+    static func edge(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.13, light: 0.11) }
+    static func hoverEdge(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.20, light: 0.18) }
+
+    /// The one solid plate: the main action, a switch that's on, a ticked checkbox.
+    static func primaryFill(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0xF5 / 255, green: 0xF5 / 255, blue: 0xF7 / 255) : Color(red: 0x11 / 255, green: 0x11 / 255, blue: 0x13 / 255)
     }
 
-    /// Under the pointer, and pressed.
-    static func hoverFill(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.085)
+    /// Text and glyphs on the primary plate.
+    static func primaryText(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0x11 / 255, green: 0x11 / 255, blue: 0x13 / 255) : .white
     }
 
-    static func pressFill(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.19) : Color.black.opacity(0.11)
-    }
+    /// Keyboard focus: a neutral ring 2 pt outside the edge, so nothing moves.
+    static func focusRing(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.55, light: 0.45) }
 
-    /// The hairline around them: a touch stronger than the card hairline so the edge reads on glass.
-    static func edge(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.09)
+    /// The highlighted row in a menu.
+    static func menuHighlight(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.08, light: 0.05) }
+
+    /// White on dark, black on light, at an opacity.
+    private static func tint(_ scheme: ColorScheme, dark: Double, light: Double) -> Color {
+        scheme == .dark ? Color.white.opacity(dark) : Color.black.opacity(light)
     }
 }
 
-/// Readback's buttons, in place of the stock bezel (the owner found it ugly, 2026-11-25). Flat:
-/// no shadows on any button, by the owner's call. Each sinks to 0.96 while pressed and springs
-/// back, and brightens under the pointer, without changing size or weight.
+/// Readback's buttons, in place of the stock bezel. Flat: no shadow on any button, by the
+/// owner's call. Each sinks a little while pressed and springs back, and brightens under the
+/// pointer, without changing size or weight.
 struct ReadbackButtonStyle: ButtonStyle {
     enum Kind {
-        /// The one main action: accent fill.
+        /// The one main action: the solid plate.
         case primary
-        /// Everything else: a light translucent fill with a hairline.
+        /// Everything else: a plate of tint with a thin edge.
         case secondary
-        /// A text-like action (See all): accent text, a fill only under the pointer.
+        /// A text-like action (See all): no plate until the pointer is over it.
         case quiet
-        /// Removes or undoes something: a red tint.
+        /// Removes or undoes something: drawn like secondary with quieter text. No red (my call,
+        /// 2026-11-25: the confirmation it opens says what goes).
         case destructive
     }
 
@@ -62,20 +80,34 @@ struct ReadbackButtonStyle: ButtonStyle {
         @Environment(\.controlSize) private var controlSize
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(\.colorScheme) private var scheme
+        @Environment(\.isFocused) private var isFocused
         @State private var hovering = false
 
         var body: some View {
             let small = controlSize == .small || controlSize == .mini
-            let shape = RoundedRectangle(cornerRadius: small ? ControlMetrics.smallRadius : ControlMetrics.radius, style: .continuous)
+            let radius = small ? ControlMetrics.smallRadius : ControlMetrics.radius
+            let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
             configuration.label
-                .font(.system(size: small ? ControlMetrics.smallFontSize : ControlMetrics.fontSize, weight: .medium))
+                .font(.system(size: small ? ControlMetrics.smallFontSize : ControlMetrics.fontSize,
+                              weight: kind == .primary ? .semibold : .medium))
                 .lineLimit(1)
                 .foregroundStyle(foreground)
-                .padding(.horizontal, kind == .quiet ? (small ? 6 : 8) : (small ? ControlMetrics.smallPadding : ControlMetrics.padding))
+                .padding(.horizontal, padding(small))
                 .frame(height: small ? ControlMetrics.smallHeight : ControlMetrics.height)
                 .background(fill, in: shape)
                 .overlay {
-                    if kind == .secondary { shape.strokeBorder(ControlMetrics.edge(scheme), lineWidth: 0.5) }
+                    if kind == .secondary || kind == .destructive {
+                        shape.strokeBorder(hovering ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme),
+                                           lineWidth: ControlMetrics.edgeWidth)
+                    }
+                }
+                .opacity(kind == .primary && hovering && !configuration.isPressed ? 0.9 : 1)
+                .overlay {
+                    RoundedRectangle(cornerRadius: radius + 2, style: .continuous)
+                        .inset(by: -2)
+                        .strokeBorder(ControlMetrics.focusRing(scheme), lineWidth: 2)
+                        .opacity(isFocused ? 1 : 0)
+                        .allowsHitTesting(false)
                 }
                 .contentShape(shape)
                 .opacity(isEnabled ? 1 : 0.4)
@@ -85,12 +117,16 @@ struct ReadbackButtonStyle: ButtonStyle {
                 .onHover { hovering = isEnabled && $0 }
         }
 
+        private func padding(_ small: Bool) -> CGFloat {
+            kind == .quiet ? (small ? ControlMetrics.smallQuietPadding : ControlMetrics.quietPadding)
+                : (small ? ControlMetrics.smallPadding : ControlMetrics.padding)
+        }
+
         private var foreground: Color {
             switch kind {
-            case .primary: return .white
-            case .secondary: return .primary
-            case .quiet: return .accentColor
-            case .destructive: return scheme == .dark ? Color(red: 1, green: 0.55, blue: 0.55) : Color(red: 0.78, green: 0.13, blue: 0.13)
+            case .primary: return ControlMetrics.primaryText(scheme)
+            case .secondary, .quiet: return .primary
+            case .destructive: return hovering ? .primary : .secondary
             }
         }
 
@@ -98,13 +134,11 @@ struct ReadbackButtonStyle: ButtonStyle {
             let pressed = configuration.isPressed
             switch kind {
             case .primary:
-                return Color.accentColor.opacity(pressed ? 0.82 : hovering ? 0.92 : 1)
-            case .secondary:
+                return ControlMetrics.primaryFill(scheme)
+            case .secondary, .destructive:
                 return pressed ? ControlMetrics.pressFill(scheme) : hovering ? ControlMetrics.hoverFill(scheme) : ControlMetrics.fill(scheme)
             case .quiet:
-                return Color.accentColor.opacity(pressed ? 0.18 : hovering ? 0.12 : 0)
-            case .destructive:
-                return Color.red.opacity(pressed ? 0.26 : hovering ? 0.2 : 0.13)
+                return pressed ? ControlMetrics.pressFill(scheme) : hovering ? ControlMetrics.hoverFill(scheme) : .clear
             }
         }
     }

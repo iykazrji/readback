@@ -21,8 +21,16 @@ struct HomePage: View {
                         Text("Recent replies").font(.system(size: 15, weight: .semibold))
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
-                        Button("See all", action: seeAll)
-                            .buttonStyle(.readback(.quiet))
+                        Button(action: seeAll) {
+                            HStack(spacing: 6) {
+                                Text("See all")
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.readback(.quiet))
+                        .accessibilityLabel("See all")
                             .disabled(replies.all.isEmpty)
                     }
                     if replies.all.isEmpty {

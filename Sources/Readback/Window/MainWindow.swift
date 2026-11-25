@@ -184,7 +184,9 @@ enum PageMetrics {
     /// The page's title bar: the window buttons' 38 pt row and room below it, with the title at
     /// its bottom, so titles sit clear of the window's top edge. (Owner: the title was too close
     /// to the top, 2026-11-25.)
-    static let headerHeight: CGFloat = 54
+    /// 61 since the controls grew to 34 pt (2026-11-25): the title row is one control tall on
+    /// every page, and this keeps the title's centre 36 pt from the top, where it sat before.
+    static let headerHeight: CGFloat = 61
 }
 
 extension View {
@@ -246,6 +248,8 @@ struct PageTitle<Trailing: View>: View {
             Spacer()
             trailing()
         }
+        // One control tall whether or not the page has controls, so titles sit at the same height everywhere.
+        .frame(height: ControlMetrics.height)
         .padding(.horizontal, PageMetrics.inset)
         .padding(.bottom, Spacing.s)
         .frame(height: PageMetrics.headerHeight, alignment: .bottom)

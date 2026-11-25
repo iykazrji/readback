@@ -43,13 +43,11 @@ struct Dropdown<Value: Hashable>: View {
 
     var body: some View {
         Button(action: toggle) {
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
                 Text(selectedTitle)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isOpen ? 180 : 0))
-                    .animation(Motion.spring(reduceMotion), value: isOpen)
             }
             .padding(.trailing, -2)   // the icon side 2 pt tighter than the text side, so it looks centred
         }
@@ -181,11 +179,16 @@ private struct MenuPanel: View {
     @State private var shown = false
     @FocusState private var focused: Bool
     @AccessibilityFocusState private var voiceOverOn: Int?
+    @Environment(\.colorScheme) private var scheme
 
-    static let rowHeight: CGFloat = 24
-    static let headerHeight: CGFloat = 22
-    static let padding: CGFloat = 5
-    static let maxHeight: CGFloat = 320
+    /// The control height less 4, so a menu's rows feel as substantial as the button that opened it.
+    static let rowHeight: CGFloat = ControlMetrics.height - 4
+    static let headerHeight: CGFloat = 24
+    static let padding: CGFloat = 6
+    static let radius: CGFloat = 12
+    static let rowRadius: CGFloat = 7
+    static let fontSize: CGFloat = ControlMetrics.fontSize
+    static let maxHeight: CGFloat = 340
 
     init(menu: DropdownMenu, opensUp: Bool, reduceMotion: Bool, close: @escaping () -> Void) {
         self.menu = menu
@@ -196,13 +199,14 @@ private struct MenuPanel: View {
     }
 
     static func size(for menu: DropdownMenu, minWidth: CGFloat) -> NSSize {
-        let font = NSFont.systemFont(ofSize: 12.5)
+        let font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
         let header = NSFont.systemFont(ofSize: 11, weight: .semibold)
         let widestItem = menu.sections.flatMap(\.items).map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         let widestHeader = menu.sections.compactMap(\.title).map { ($0 as NSString).size(withAttributes: [.font: header]).width }.max() ?? 0
-        // An item: 5 pt menu padding, 6 pt row padding, the 12 pt check and a 6 pt gap on the left,
-        // 6 + 5 on the right (and a little air); a heading: 5 + 10 on each side.
-        let needed = max(ceil(widestItem) + 52, ceil(widestHeader) + 32)
+        // An item: 6 pt menu padding, 9 pt row padding, the 12 pt check and an 8 pt gap on the left,
+        // 14 + 6 on the right, and 14 pt of air: SwiftUI draws the text a little wider than
+        // NSString measures it, and "Bottle" was cut to "Bot…" with less. A heading: 6 + 10 each side.
+        let needed = max(ceil(widestItem) + 69, ceil(widestHeader) + 34)
         let rows = CGFloat(menu.sections.reduce(0) { $0 + $1.items.count })
         let headers = CGFloat(menu.sections.filter { $0.title != nil }.count)
         return NSSize(width: max(minWidth, needed),
@@ -238,8 +242,8 @@ private struct MenuPanel: View {
                 if let h { withAnimation(.easeOut(duration: 0.1)) { scroller.scrollTo(h) } }
             }
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(WindowColors.hairline, lineWidth: 0.5))
+        .background(MenuColors.panel, in: RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(MenuColors.edge, lineWidth: 0.5))
         .scaleEffect(shown || reduceMotion ? 1 : 0.94, anchor: opensUp ? .bottomLeading : .topLeading)
         .opacity(shown ? 1 : 0)
         .focusable()
@@ -269,19 +273,20 @@ private struct MenuPanel: View {
             menu.choose(index)
             close()
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .opacity(menu.selected == index ? 1 : 0)
                     .frame(width: 12)
                 Text(title).lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .font(.system(size: 12.5))
-            .foregroundStyle(highlighted ? Color.white : Color.primary)
-            .padding(.horizontal, 6)
+            .font(.system(size: Self.fontSize, weight: menu.selected == index ? .medium : .regular))
+            .foregroundStyle(Color.primary)
+            .padding(.leading, 9)
+            .padding(.trailing, 14)
             .frame(height: Self.rowHeight)
-            .background(highlighted ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(highlighted ? ControlMetrics.menuHighlight(scheme) : .clear, in: RoundedRectangle(cornerRadius: Self.rowRadius, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -296,4 +301,18 @@ private struct MenuPanel: View {
         menu.choose(index)
         close()
     }
+}
+
+/// The menu's own colours: a near-solid panel so the rows read crisply over anything, a hairline
+/// edge, and a neutral highlight (`ControlMetrics.menuHighlight`; no accent: the owner's
+/// black-and-white look, 2026-11-25).
+private enum MenuColors {
+    static let panel = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 0x22 / 255, green: 0x23 / 255, blue: 0x27 / 255, alpha: 0.97)
+            : NSColor(srgbRed: 0xFC / 255, green: 0xFC / 255, blue: 0xFD / 255, alpha: 0.98)
+    })
+    static let edge = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.13) : NSColor(white: 0, alpha: 0.10)
+    })
 }

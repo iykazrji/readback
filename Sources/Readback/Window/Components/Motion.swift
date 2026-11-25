@@ -5,7 +5,7 @@ import SwiftUI
 /// polished motion on 2026-11-25.
 enum Motion {
     /// How far a control sinks while pressed.
-    static let press: CGFloat = 0.96
+    static let press: CGFloat = 0.97
 
     static func spring(_ reduceMotion: Bool) -> Animation {
         reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.72)

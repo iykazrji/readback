@@ -10,6 +10,7 @@ struct SearchField: View {
     @Binding var text: String
     var width: CGFloat = 200
     @FocusState private var focused: Bool
+    @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
 
@@ -23,7 +24,7 @@ struct SearchField: View {
         let shape = RoundedRectangle(cornerRadius: ControlMetrics.radius, style: .continuous)
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             TextField(prompt, text: $text)
@@ -41,33 +42,43 @@ struct SearchField: View {
                     text = ""
                     focused = true
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)   // a target you don't miss, inside the field's height
+                    // A 20 pt round button, as in the owner's approved mockup (2026-11-25), inside a
+                    // 28 pt target you don't miss.
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 20, height: 20)
+                        .background(ControlMetrics.pressFill(scheme), in: Circle())
+                        .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .padding(.trailing, -6)   // the 24 pt target hangs into the padding; the icon sits where the text would end
+                .padding(.trailing, -12)   // the target hangs into the padding; the circle sits 8 pt from the edge
                 .help("Clear the search")
                 .accessibilityLabel("Clear the search")
                 .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
             }
         }
-        .padding(.leading, 9)
-        .padding(.trailing, ControlMetrics.padding - 2)
+        .padding(.leading, 11)
+        .padding(.trailing, ControlMetrics.padding)
         .frame(width: width, height: ControlMetrics.height)
         .background(focused ? ControlMetrics.hoverFill(scheme) : ControlMetrics.fill(scheme), in: shape)
-        .overlay { shape.strokeBorder(ControlMetrics.edge(scheme), lineWidth: 0.5) }
         .overlay {
-            // Focus: a neutral ring just outside the edge, so the field's size never changes.
-            shape.inset(by: -2.5)
-                .strokeBorder(scheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.28), lineWidth: 1.5)
+            shape.strokeBorder(hovering || focused ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme),
+                               lineWidth: ControlMetrics.edgeWidth)
+        }
+        .overlay {
+            // Focus: a neutral 2 pt ring 2 pt outside the edge, so the field's size never changes.
+            RoundedRectangle(cornerRadius: ControlMetrics.radius + 2, style: .continuous)
+                .inset(by: -2)
+                .strokeBorder(ControlMetrics.focusRing(scheme), lineWidth: 2)
                 .opacity(focused ? 1 : 0)
                 .allowsHitTesting(false)
         }
+        .onHover { hovering = $0 }
         .animation(Motion.pop(reduceMotion), value: text.isEmpty)
         .animation(.easeOut(duration: 0.15), value: focused)
+        .animation(.easeOut(duration: 0.15), value: hovering)
         .contentShape(shape)
         .onTapGesture { focused = true }
     }
