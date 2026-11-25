@@ -156,8 +156,9 @@ struct MainView: View {
             HistoryPage(app: app, reader: app.reader, replies: app.replies,
                         openConnections: { navigation.section = .connections })
         case .voices:
-            Page(title: "Voices") { VoicesPage(prefs: app.prefs, runtime: app.runtime, downloads: app.downloads,
-                                                  preview: app.preview, downloadNow: app.downloadVoice, download: app.download, cancelDownload: app.cancelDownload) }
+            // Builds its own header: the engine bar pins under the title (VoicesPage.engineBar).
+            VoicesPage(prefs: app.prefs, runtime: app.runtime, downloads: app.downloads,
+                       preview: app.preview, downloadNow: app.downloadVoice, download: app.download, cancelDownload: app.cancelDownload)
         case .reading:
             Page(title: "Reading") { ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition) }
         case .connections:
@@ -226,7 +227,8 @@ private struct PageHeader<Header: View>: ViewModifier {
                                                      .init(color: .black, location: 0.62),
                                                      .init(color: .clear, location: 1)],
                                              startPoint: .top, endPoint: .bottom))
-                        .frame(height: PageMetrics.headerHeight + 22)
+                        // The header's own height (title, plus anything pinned under it) and 22 pt more.
+                        .padding(.bottom, -22)
                         .opacity(scrolled ? 1 : 0)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)

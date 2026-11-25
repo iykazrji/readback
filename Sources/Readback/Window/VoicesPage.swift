@@ -13,11 +13,27 @@ struct VoicesPage: View {
     let download: (String) -> Void
     let cancelDownload: (String) -> Void
     @State private var confirmRemove = false
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var engineIsThereOrComing: Bool {
+    /// The engine isn't here yet, is on its way, or its install failed: the pinned bar at the top.
+    /// Every voice but the macOS one needs it, so it's the first thing on the page until it's in
+    /// (owner, 2026-11-25: "let that be there as the first thing they see"; one wording whatever
+    /// voice is picked).
+    private var engineBarShows: Bool {
         switch runtime.state {
-        case .installing, .installed, .failed: return true
-        case .notInstalled, .unsupported: return false
+        case .notInstalled, .installing: return true
+        case .failed: return !runtime.removeFailed
+        case .installed, .unsupported: return false
+        }
+    }
+
+    private var engineCardShows: Bool {
+        switch runtime.state {
+        case .installed: return true
+        case .failed: return runtime.removeFailed
+        case .unsupported: return prefs.engine.needsRuntime
+        case .notInstalled, .installing: return false
         }
     }
 
@@ -36,27 +52,14 @@ struct VoicesPage: View {
                 FormNote(engineNote)
             }
 
-            // Shown whatever voice is picked once the engine is there or on its way, so Cancel and
-            // Remove are always reachable.
-            if prefs.engine.needsRuntime || engineIsThereOrComing {
+            // Installing, its progress and a failed install live in the bar pinned at the top
+            // (`engineBar`); this card is for an engine that's here (Remove…), a removal that
+            // failed, and Macs that can't run it.
+            if engineCardShows {
                 Section("On-device engine") {
                     runtimeRow
                     // The listed voices download from their own rows above; a custom model has none.
                     if runtime.state == .installed, prefs.engine == .custom { modelRow }
-                }
-            } else if runtime.state == .notInstalled {
-                Section {
-                    LabeledContent {
-                        Button("Get it") {
-                            prefs.engine = .kokoro
-                            install()
-                        }
-                    } label: {
-                        Text("Want a more natural voice?")
-                        Text("Kokoro sounds like a person reading. It downloads once (about 1.8 GB in all), then runs on your Mac with no account.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
             }
 
@@ -98,6 +101,14 @@ struct VoicesPage: View {
             }
         }
         .formStyle(CardFormStyle())
+        .scrollContentBackground(.hidden)
+        // The bar is part of the page's header, so it stays put and gets the header's frosting
+        // when the list scrolls under it.
+        .pageHeader(VStack(spacing: 0) {
+            PageTitle("Voices")
+            engineBar
+        }
+        .animation(Motion.spring(reduceMotion), value: engineBarShows))
         .confirmationDialog("Remove the on-device voice engine?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) { runtime.startRemoving() }
         } message: {
@@ -201,39 +212,8 @@ struct VoicesPage: View {
         case .unsupported:
             Text("The on-device engine needs a Mac with Apple silicon. Replies use the macOS voice.")
                 .foregroundStyle(.secondary)
-        case .notInstalled:
-            LabeledContent {
-                Button("Install") { install() }
-                    .buttonStyle(.readback(.primary))
-            } label: {
-                Text("Not installed")
-                Text(installNote).font(.caption).foregroundStyle(.secondary)
-            }
-        case .installing(let step):
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(step)
-                    Spacer()
-                    Button("Cancel") { runtime.cancel() }
-                }
-                if let download = downloads.active {
-                    // The install's last step is the voice's first download.
-                    Meter(fraction: download.fraction ?? 0)
-                    // Under the bar's right end, where the amount's one-width padding doesn't show.
-                    Text(download.amount)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                if let line = runtime.lastLines.last {
-                    Text(line)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
+        case .notInstalled, .installing:
+            EmptyView()   // in the pinned bar
         case .installed:
             LabeledContent {
                 Button("Remove…") { confirmRemove = true }
@@ -258,10 +238,86 @@ struct VoicesPage: View {
         }
     }
 
-    private var installNote: String {
-        let model = prefs.engine.model.map { " and the voice (\($0.size))" } ?? ""
-        return "Downloads Python and mlx-audio (\(Runtime.size))\(model). Until then, replies use the macOS voice."
+    // MARK: The engine bar
+
+    @ViewBuilder private var engineBar: some View {
+        if engineBarShows {
+            let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+            Group {
+                switch runtime.state {
+                case .installing(let step):
+                    installProgress(step)
+                case .failed(let message):
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("The install didn't finish").font(.system(size: 13, weight: .semibold))
+                                Text(message)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 12)
+                            Button("Try again") { runtime.retry(for: prefs) }
+                                .buttonStyle(.readback(.primary))
+                        }
+                    }
+                default:
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("The on-device engine isn't installed").font(.system(size: 13, weight: .semibold))
+                            Text("Kokoro, MeloTTS, Soprano and Qwen3 need it. \(Runtime.size.prefix(1).uppercased())\(Runtime.size.dropFirst()).")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 12)
+                        Button("Install") { install() }
+                            .buttonStyle(.readback(.primary))
+                    }
+                }
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, Spacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Solid underneath, so the list scrolling under the bar doesn't show through it.
+            .background { ZStack { shape.fill(WindowColors.page); shape.fill(WindowColors.card) } }
+            .overlay { Hairline(shape, ControlMetrics.edge(scheme)) }
+            .padding(.horizontal, PageMetrics.inset)
+            .padding(.top, Spacing.xs)
+            .padding(.bottom, Spacing.s)
+            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .contain)
+        }
     }
+
+    private func installProgress(_ step: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(step).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button("Cancel") { runtime.cancel() }
+            }
+            if let download = downloads.active {
+                // The install's last step is the voice's first download.
+                Meter(fraction: download.fraction)
+                // Under the bar's right end, where the amount's one-width padding doesn't show.
+                Text(download.amount)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            if let line = runtime.lastLines.last {
+                Text(line)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+    }
+
 
     private func install() {
         runtime.install(for: prefs)
