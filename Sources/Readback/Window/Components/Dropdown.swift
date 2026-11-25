@@ -52,6 +52,7 @@ struct Dropdown<Value: Hashable>: View {
             .padding(.trailing, -2)   // the icon side 2 pt tighter than the text side, so it looks centred
         }
         .buttonStyle(.readback(.secondary))
+        .focusEffectDisabled()   // the style draws its own neutral keyboard ring
         .background(AnchorView(box: anchor))
         // On the button itself, so VoiceOver's press still opens it (a replacement element
         // made with .accessibilityElement(children: .ignore) had no action).
@@ -243,7 +244,7 @@ private struct MenuPanel: View {
             }
         }
         .background(MenuColors.panel, in: RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(MenuColors.edge, lineWidth: 0.5))
+        .overlay(Hairline(RoundedRectangle(cornerRadius: Self.radius, style: .continuous), MenuColors.edge))
         .scaleEffect(shown || reduceMotion ? 1 : 0.94, anchor: opensUp ? .bottomLeading : .topLeading)
         .opacity(shown ? 1 : 0)
         .focusable()

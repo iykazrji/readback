@@ -29,3 +29,21 @@ private struct KeyboardFocusRing<S: InsettableShape>: ViewModifier {
             }
     }
 }
+
+/// The controls' thin edge: exactly one device pixel on any screen, drawn inside the shape. A
+/// fixed 0.5 pt line was a full pixel on Retina but half a pixel on a 1x display, where it
+/// faded to almost nothing (final review, 2026-11-25).
+struct Hairline<S: InsettableShape>: View {
+    let shape: S
+    let color: Color
+    @Environment(\.displayScale) private var displayScale
+
+    init(_ shape: S, _ color: Color) {
+        self.shape = shape
+        self.color = color
+    }
+
+    var body: some View {
+        shape.strokeBorder(color, lineWidth: 1 / max(displayScale, 1)).allowsHitTesting(false)
+    }
+}

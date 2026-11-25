@@ -23,12 +23,12 @@ struct ReadbackSwitch: View {
         ZStack(alignment: isOn ? .trailing : .leading) {
             Capsule()
                 .fill(isOn ? ControlMetrics.primaryFill(scheme) : offTrack)
-                .overlay { if !isOn { Capsule().strokeBorder(ControlMetrics.edge(scheme), lineWidth: ControlMetrics.edgeWidth) } }
+                .overlay { if !isOn { Hairline(Capsule(), ControlMetrics.edge(scheme)) } }
             Capsule()
                 .fill(thumbColor)
                 .overlay {
                     // On a light window the white thumb needs an edge to read against the pale track.
-                    if !isOn && scheme == .light { Capsule().strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5) }
+                    if !isOn && scheme == .light { Hairline(Capsule(), Color.black.opacity(0.12)) }
                 }
                 .frame(width: thumb + stretch, height: thumb)
                 .padding(inset)

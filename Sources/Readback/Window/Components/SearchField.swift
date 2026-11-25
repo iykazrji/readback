@@ -64,8 +64,7 @@ struct SearchField: View {
         .frame(width: width, height: ControlMetrics.height)
         .background(focused ? ControlMetrics.hoverFill(scheme) : ControlMetrics.fill(scheme), in: shape)
         .overlay {
-            shape.strokeBorder(hovering || focused ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme),
-                               lineWidth: ControlMetrics.edgeWidth)
+            Hairline(shape, hovering || focused ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme))
         }
         .overlay {
             // Focus: a neutral 2 pt ring 2 pt outside the edge, so the field's size never changes.

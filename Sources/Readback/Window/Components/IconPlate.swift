@@ -22,6 +22,7 @@ struct IconPlate: View {
         }
         .buttonStyle(PlateStyle(size: small ? ControlMetrics.smallHeight : ControlMetrics.height,
                                 radius: small ? ControlMetrics.smallRadius : ControlMetrics.radius))
+        .focusEffectDisabled()   // the plate draws its own neutral keyboard ring
         .help(help)
         .accessibilityLabel(help)
     }
@@ -43,6 +44,7 @@ struct IconPlate: View {
         @Environment(\.isEnabled) private var isEnabled
         @Environment(\.colorScheme) private var scheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.isFocused) private var isFocused
 
         var body: some View {
             let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -51,8 +53,8 @@ struct IconPlate: View {
                 .frame(width: size, height: size)
                 .background(configuration.isPressed ? ControlMetrics.pressFill(scheme)
                             : hovering ? ControlMetrics.hoverFill(scheme) : ControlMetrics.fill(scheme), in: shape)
-                .overlay { shape.strokeBorder(hovering ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme),
-                                              lineWidth: ControlMetrics.edgeWidth) }
+                .overlay { Hairline(shape, hovering ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme)) }
+                .keyboardFocusRing(isFocused, shape)
                 .contentShape(shape)
                 .opacity(isEnabled ? 1 : 0.4)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.press : 1)

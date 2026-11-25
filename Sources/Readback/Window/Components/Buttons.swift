@@ -20,8 +20,6 @@ enum ControlMetrics {
     static let smallPadding: CGFloat = 12
     static let quietPadding: CGFloat = 10
     static let smallQuietPadding: CGFloat = 8
-    /// The edge is a hairline drawn inside the shape (the owner didn't pick between this and 1 pt).
-    static let edgeWidth: CGFloat = 0.5
 
     static func fill(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.08, light: 0.045) }
     static func hoverFill(_ scheme: ColorScheme) -> Color { tint(scheme, dark: 0.12, light: 0.075) }
@@ -97,17 +95,11 @@ struct ReadbackButtonStyle: ButtonStyle {
                 .background(fill, in: shape)
                 .overlay {
                     if kind == .secondary || kind == .destructive {
-                        shape.strokeBorder(hovering ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme),
-                                           lineWidth: ControlMetrics.edgeWidth)
+                        Hairline(shape, hovering ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme))
                     }
                 }
                 .opacity(kind == .primary && hovering && !configuration.isPressed ? 0.9 : 1)
-                .overlay {
-                    shape.inset(by: -2)   // the corner grows with the inset, so the ring stays parallel
-                        .strokeBorder(ControlMetrics.focusRing(scheme), lineWidth: 2)
-                        .opacity(isFocused ? 1 : 0)
-                        .allowsHitTesting(false)
-                }
+                .keyboardFocusRing(isFocused, shape)
                 .contentShape(shape)
                 .opacity(isEnabled ? 1 : 0.4)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.press : 1)

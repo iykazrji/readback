@@ -24,7 +24,7 @@ struct ReadbackCheckboxStyle: ToggleStyle {
                     box.fill(configuration.isOn ? ControlMetrics.primaryFill(scheme)
                              : hovering ? ControlMetrics.hoverFill(scheme) : ControlMetrics.fill(scheme))
                     if !configuration.isOn {
-                        box.strokeBorder(ControlMetrics.hoverEdge(scheme), lineWidth: ControlMetrics.edgeWidth)
+                        Hairline(box, ControlMetrics.hoverEdge(scheme))
                     }
                     Image(systemName: "checkmark")
                         .font(.system(size: 9, weight: .bold))

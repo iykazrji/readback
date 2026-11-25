@@ -351,7 +351,7 @@ struct SetupSheet: View {
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 2)
                                 .background(ControlMetrics.fill(scheme), in: Capsule())
-                                .overlay(Capsule().strokeBorder(ControlMetrics.edge(scheme), lineWidth: ControlMetrics.edgeWidth))
+                                .overlay(Hairline(Capsule(), ControlMetrics.edge(scheme)))
                         }
                     }
                     Text(step.detail)

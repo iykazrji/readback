@@ -303,7 +303,7 @@ private struct ControlBar: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 4) {
+            Group {
                 IconButton(symbol: "arrow.counterclockwise", help: "Start over", action: reader.restart)
                 IconButton(symbol: "backward.fill", help: "Back a sentence", action: reader.back)
                 IconButton(symbol: playSymbol, help: playHelp, size: 13, action: reader.togglePlay)
@@ -374,50 +374,28 @@ private struct ControlBar: View {
     }
 }
 
-/// The player's transport buttons: 28 pt plates with a hairline edge, like the window's small
-/// controls (the owner approved plates for these on 2026-11-25). Same symbols and actions as before.
 private struct IconButton: View {
     let symbol: String
     let help: String
     var size: CGFloat = 11
     let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(isEnabled ? Theme.keycapText : Theme.textDim)
+                .frame(width: 26, height: 26)
+                .background(hovering && isEnabled ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(Rectangle())
         }
-        .buttonStyle(Plate())
+        .buttonStyle(PressDim())
         .help(help)
         .accessibilityLabel(help)
-    }
-
-    private struct Plate: ButtonStyle {
-        func makeBody(configuration: Configuration) -> some View {
-            PlateBody(configuration: configuration)
-        }
-
-        private struct PlateBody: View {
-            let configuration: Configuration
-            @State private var hovering = false
-            @Environment(\.isEnabled) private var isEnabled
-            @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-            var body: some View {
-                let shape = RoundedRectangle(cornerRadius: ControlMetrics.smallRadius, style: .continuous)
-                configuration.label
-                    .foregroundStyle(isEnabled ? Theme.keycapText : Theme.textDim)
-                    .frame(width: ControlMetrics.smallHeight, height: ControlMetrics.smallHeight)
-                    .background(Color.white.opacity(configuration.isPressed ? 0.16 : hovering ? 0.12 : 0.08), in: shape)
-                    .overlay { shape.strokeBorder(Color.white.opacity(hovering ? 0.20 : 0.13), lineWidth: ControlMetrics.edgeWidth) }
-                    .contentShape(shape)
-                    .opacity(isEnabled ? 1 : 0.5)
-                    .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.press : 1)
-                    .animation(Motion.spring(reduceMotion), value: configuration.isPressed)
-                    .animation(.easeOut(duration: 0.12), value: hovering)
-                    .onHover { hovering = isEnabled && $0 }
-            }
-        }
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }
 

@@ -33,7 +33,7 @@ struct Segmented<Value: Hashable>: View {
         .padding(inset)
         .frame(height: ControlMetrics.height)
         .background(ControlMetrics.fill(scheme), in: shape)
-        .overlay { shape.strokeBorder(ControlMetrics.edge(scheme), lineWidth: ControlMetrics.edgeWidth) }
+        .overlay { Hairline(shape, ControlMetrics.edge(scheme)) }
         .keyboardFocusRing(focused, shape)
         .focusable()
         .focused($focused)
@@ -58,13 +58,14 @@ struct Segmented<Value: Hashable>: View {
                 .background {
                     if chosen {
                         inner.fill(chosenFill)
-                            .overlay { inner.strokeBorder(chosenEdge, lineWidth: ControlMetrics.edgeWidth) }
+                            .overlay { Hairline(inner, chosenEdge) }
                             .matchedGeometryEffect(id: "chosen", in: namespace)
                     }
                 }
                 .contentShape(inner)
         }
         .buttonStyle(.plain)
+        .focusable(false)   // one Tab stop for the whole control; the arrows move between segments
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
