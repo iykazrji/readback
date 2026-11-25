@@ -171,9 +171,11 @@ struct Page<Content: View>: View {
 /// Space between the window's edge and a page's content, shared so pages line up when you switch.
 enum PageMetrics {
     /// Matches where a grouped Form puts its sections, so card pages and settings pages agree.
-    static let inset: CGFloat = 24
-    /// The title bar's row, which the window buttons sit in.
-    static let headerHeight: CGFloat = 38
+    static let inset: CGFloat = Spacing.xl
+    /// The page's title bar: the window buttons' 38 pt row and room below it, with the title at
+    /// its bottom, so titles sit clear of the window's top edge. (Owner: the title was too close
+    /// to the top, 2026-11-25.)
+    static let headerHeight: CGFloat = 54
 }
 
 extension View {
@@ -236,7 +238,8 @@ struct PageTitle<Trailing: View>: View {
             trailing()
         }
         .padding(.horizontal, PageMetrics.inset)
-        .frame(height: PageMetrics.headerHeight)   // centred on the window buttons' row
+        .padding(.bottom, Spacing.s)
+        .frame(height: PageMetrics.headerHeight, alignment: .bottom)
     }
 }
 
@@ -257,7 +260,6 @@ private struct Sidebar: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(Self.groups.enumerated()), id: \.offset) { index, group in
-                    if index > 0 { Color.clear.frame(height: 14) }
                     ForEach(group, id: \.self) { section in row(section) }
                 }
             }

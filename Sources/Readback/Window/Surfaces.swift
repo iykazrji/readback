@@ -3,6 +3,17 @@ import SwiftUI
 
 /// One radius ladder for the whole window, so curves nest: anything inside a card uses the
 /// card's radius minus the padding between them, and every corner is continuous.
+/// One spacing scale for every page: section gaps, card gaps and card padding come from here,
+/// so pages keep the same rhythm. (Owner asked for better spacing, 2026-11-25.)
+enum Spacing {
+    static let xs: CGFloat = 4
+    static let s: CGFloat = 8
+    static let m: CGFloat = 12
+    static let l: CGFloat = 16
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
+}
+
 enum Radius {
     /// Page cards: the stats, replies, notices, settings groups.
     static let card: CGFloat = 16
@@ -29,17 +40,26 @@ enum WindowColors {
     static let pageTint = Color(nsColor: dynamic(light: 0xF4F4F5, dark: 0x202126, alpha: 0.84))
     static let page = Color(nsColor: dynamic(light: 0xF4F4F5, dark: 0x1D1E22))
     static let sidebar = Color(nsColor: dynamic(light: 0xEAEAEC, dark: 0x2A2C31))
-    static let card = Color(nsColor: dynamic(light: 0xFFFFFF, dark: 0x28292E))
-    static let cardHover = Color(nsColor: dynamic(light: 0xFAFAFB, dark: 0x2F3036))
+    /// Cards, hovers and highlights are a light overlay rather than a solid colour, so on the
+    /// glass they stay a step above whatever shows through (a solid dark card read as a hole).
+    static let card = overlay(light: (1, 0.72), dark: (1, 0.06))
+    static let cardHover = overlay(light: (1, 0.9), dark: (1, 0.09))
     /// A card that's playing or chosen: the accent, lightly.
-    static let cardActive = Color(nsColor: dynamic(light: 0xE9F0FE, dark: 0x27324A))
+    static let cardActive = Color.accentColor.opacity(0.16)
     /// Sidebar cards and the highlight sit on the sidebar, so they're a step lighter than it.
-    static let sidebarCard = Color(nsColor: dynamic(light: 0xF7F7F8, dark: 0x34363C))
-    static let rowHighlight = Color(nsColor: dynamic(light: 0xDCDCE0, dark: 0x393B42))
-    static let rowSelected = Color(nsColor: dynamic(light: 0xD4D5DA, dark: 0x41434B))
+    static let sidebarCard = overlay(light: (1, 0.55), dark: (1, 0.06))
+    static let rowHighlight = overlay(light: (0, 0.05), dark: (1, 0.07))
+    static let rowSelected = overlay(light: (0, 0.08), dark: (1, 0.11))
     /// A hairline that separates rows inside a card.
-    static let hairline = Color(nsColor: dynamic(light: 0xE4E4E7, dark: 0x33343A))
+    static let hairline = overlay(light: (0, 0.07), dark: (1, 0.07))
 
+    /// White (1) or black (0) at an opacity, per appearance.
+    private static func overlay(light: (white: CGFloat, alpha: CGFloat), dark: (white: CGFloat, alpha: CGFloat)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let pick = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return NSColor(white: pick.white, alpha: pick.alpha)
+        })
+    }
 
     private static func dynamic(light: UInt32, dark: UInt32, alpha: CGFloat = 1) -> NSColor {
         NSColor(name: nil) { appearance in
@@ -84,9 +104,9 @@ enum SurfaceBase { case page, sidebar }
 struct CardFormStyle: FormStyle {
     func makeBody(configuration: Configuration) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: Spacing.xl) {
                 ForEach(sections: configuration.content) { section in
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: Spacing.s) {
                         if !section.header.isEmpty {
                             section.header
                                 .font(.system(size: 13, weight: .semibold))
@@ -97,12 +117,12 @@ struct CardFormStyle: FormStyle {
                         VStack(spacing: 0) {
                             ForEach(Array(section.content.enumerated()), id: \.element.id) { index, row in
                                 if index > 0 {
-                                    WindowColors.hairline.frame(height: 1).padding(.leading, 14)
+                                    WindowColors.hairline.frame(height: 1).padding(.leading, Spacing.l)
                                 }
                                 row
                                     .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
+                                    .padding(.horizontal, Spacing.l)
+                                    .padding(.vertical, Spacing.m)
                             }
                         }
                         .surface()
@@ -112,7 +132,9 @@ struct CardFormStyle: FormStyle {
                     }
                 }
             }
-            .padding(PageMetrics.inset)
+            .padding(.horizontal, PageMetrics.inset)
+            .padding(.top, Spacing.s)
+            .padding(.bottom, PageMetrics.inset)
             .toggleStyle(SpreadSwitchStyle())
             .labeledContentStyle(SpreadLabeledContentStyle())
         }
