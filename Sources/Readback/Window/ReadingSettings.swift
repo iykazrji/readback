@@ -23,7 +23,7 @@ struct ReadingSettings: View {
             } header: {
                 Text("Read every reply out loud")
             } footer: {
-                FormNote("Off by default. In Claude Code you can switch it on for one session with /speak on, and /read reads the last reply. With it off, Read last reply in the menu bar still works.")
+                FormNote("Off by default. In Claude Code you can switch it on for one session with /readback:speak on, and /readback:read reads the last reply. With it off, Read last reply in the menu bar still works.")
             }
 
             Section {
@@ -37,7 +37,7 @@ struct ReadingSettings: View {
                     if !name.isEmpty { NSSound(named: NSSound.Name(name))?.play() }
                 }
             } footer: {
-                FormNote("Plays when a reply starts reading by itself, and the voice follows a second later. Not when you press play or type /read.")
+                FormNote("Plays when a reply starts reading by itself, and the voice follows a second later. Not when you press play or ask for the last reply.")
             }
 
             Section {

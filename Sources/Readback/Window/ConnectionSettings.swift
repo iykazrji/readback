@@ -17,7 +17,7 @@ struct ConnectionSettings: View {
             } header: {
                 Text("Coding tools")
             } footer: {
-                FormNote("Connecting hands each finished reply to Readback and stops the reading when you send a new message. Claude Code and Codex also get /speak and /read. Before Readback changes one of a tool's files, it keeps the old version beside it as <name>.before-readback.")
+                FormNote("Connecting hands each finished reply to Readback and stops the reading when you send a new message. Claude Code also gets /readback:speak and /readback:read, and Codex /speak and /read. Before Readback changes one of a tool's files, it keeps the old version beside it as <name>.before-readback.")
             }
         }
         .formStyle(CardFormStyle())
@@ -124,7 +124,7 @@ enum ConnectionText {
         case .incomplete:
             return home.tool == .codex
                 ? "Readback's Codex plugin is switched on but isn't installed, or its hooks are missing. Reconnect to put it back."
-                : "Part of Readback's setup is missing here (a hook or the /speak commands). Reconnect to put it back."
+                : "Part of Readback's setup is missing here (a hook or its commands). Reconnect to put it back."
         case .outdated:
             return "Connected the old way, without /speak or /read. Update to switch to Readback's Codex plugin. Codex then asks you to approve its hooks once more."
         case .updateAvailable:
@@ -133,7 +133,7 @@ enum ConnectionText {
             return "One step left. \(howToApprove(home))"
         case .connected:
             switch home.tool {
-            case .claude: return "Connected. In a session: /speak on, /speak off, /read. Start a new session to pick up the commands."
+            case .claude: return "Connected. In a session: /readback:speak on, /readback:speak off, /readback:read. Start a new session to pick up the commands."
             case .codex:
                 if let lastReply {
                     return "Working. Last reply \(lastReply.formatted(.relative(presentation: .named))). In a chat: /speak on, /speak off, /read."
@@ -143,7 +143,7 @@ enum ConnectionText {
             }
         case .notConnected:
             switch home.tool {
-            case .claude: return "Edits ~/.claude/settings.json and adds the /speak and /read commands."
+            case .claude: return "Edits ~/.claude/settings.json and adds the /readback:speak and /readback:read commands."
             case .codex: return "Installs Readback's Codex plugin, with /speak and /read."
             case .opencode: return "Adds ~/.config/opencode/plugins/readback.js."
             }

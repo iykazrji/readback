@@ -5,7 +5,7 @@
 #   Contents/MacOS/Readback                 the menu bar app
 #   Contents/Helpers/readback               the CLI the coding tools' hooks run
 #   Contents/Helpers/uv                     installs the on-device voice engine
-#   Contents/Resources/ClaudeCodePlugin     the Claude Code mod (/speak, /read, the Stop band)
+#   Contents/Resources/ClaudeCodePlugin     the Claude Code mod (/readback:speak, /readback:read, the Stop band)
 #   Contents/Resources/CodexPluginAssets    the Codex plugin's artwork
 #   Contents/Resources/AppIcon.icns, MenuBarIcon(@2x).png, ThirdPartyNotices.txt
 set -euo pipefail

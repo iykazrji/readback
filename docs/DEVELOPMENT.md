@@ -19,7 +19,7 @@ Sources/Readback         the app: menu bar, floating player (with the reply list
                          voice engines, engine installer, control server on 127.0.0.1:8908
 Sources/readback-cli     the `readback` command the tools' hooks run (bundled as Contents/Helpers/readback)
 integrations/claude-code/readback
-                         the Claude Code mod: /speak on|off, /read, the "Reading aloud · Stop" band
+                         the Claude Code mod: /readback:speak on|off, /readback:read (commands/*.md, answered by its command.run hooks), the "Reading aloud · Stop" band
 Resources                third-party notices, the app icon (AppIcon-1024.png: Cadence, rendered in
                          Blender) and its 18 pt menu bar template
 design/icon              the icon's Blender source and design notes (see NOTES.md to rebuild it)
@@ -31,10 +31,10 @@ docs/README-for-friends.md
 
 1. The tool's Stop hook runs `readback hook <tool>` with the hook's JSON on stdin. OpenCode has no hooks file, so a plugin does the same on `session.idle`.
 2. The CLI posts the reply to the app (`POST /speak` with `session` and `source`). It starts the app only if the reply is meant to be read, checking the same switches the app does (`ReadingSwitches`).
-3. Every reply goes into the history (`~/Library/Application Support/Readback/history.json`, last 50). The app reads it if that session switched read-aloud on (`/speak on`) or that tool's "read every reply" switch is on. `ReplyQueue` in Core makes every one of these decisions; the app carries out what it returns. If something is already playing it waits its turn (or cuts in, per Reading → "Switch to it"); when a reply ends, the oldest waiting one plays. Close/Esc means quiet: what was waiting stays in History unplayed. A tool's "new message" hook drops only that session's reading and waiting replies.
+3. Every reply goes into the history (`~/Library/Application Support/Readback/history.json`, last 50). The app reads it if that session switched read-aloud on (`/readback:speak on` in Claude Code, `/speak on` in Codex) or that tool's "read every reply" switch is on. `ReplyQueue` in Core makes every one of these decisions; the app carries out what it returns. If something is already playing it waits its turn (or cuts in, per Reading → "Switch to it"); when a reply ends, the oldest waiting one plays. Close/Esc means quiet: what was waiting stays in History unplayed. A tool's "new message" hook drops only that session's reading and waiting replies.
 4. The reply is cleaned (code blocks and tables become a short spoken note), split into sentence chunks, and voiced chunk by chunk. Playback starts on the first chunk while the rest are made.
 5. The tool's UserPromptSubmit hook runs `readback stop`, which stops the reading only if it came from the same session. Codex's runs `readback prompt codex` instead, which does the same for an ordinary prompt and answers `/speak on|off` and `/read` itself, blocking the prompt so the model never sees it.
-6. `/speak` and `/read` from either tool go to `POST /command`, and the app writes the answer (`CommandAnswer`), so Claude Code and Codex say the same thing. Claude Code's `/read` sends the reply's text along, for when Readback wasn't running when the reply finished.
+6. The commands from either tool (`/readback:speak` and `/readback:read` in Claude Code, `/speak` and `/read` in Codex) go to `POST /command`, and the app writes the answer (`CommandAnswer`, which names each tool's own commands), so Claude Code and Codex say the same thing. Claude Code's `/readback:read` sends the reply's text along, for when Readback wasn't running when the reply finished.
 
 ### Codex
 

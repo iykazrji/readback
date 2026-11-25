@@ -32,18 +32,18 @@ No feature crosses these, however good it looks.
 
 These are today's defaults. A better experience can change them, but whoever changes one says why.
 
-- **Quiet unless asked.** Nothing is read until the person switches it on: for one session (`/speak on`), for a tool ("Read every reply"), or for one reply (`/read`, Read last reply). The owner chose this as a default, not a hard line. Reading out loud uninvited is still the quickest way to annoy someone, so changing it needs a strong reason.
+- **Quiet unless asked.** Nothing is read until the person switches it on: for one session (`/readback:speak on`), for a tool ("Read every reply"), or for one reply (`/readback:read`, Read last reply). The owner chose this as a default, not a hard line. Reading out loud uninvited is still the quickest way to annoy someone, so changing it needs a strong reason.
 - **Respect the person's attention.** Replies wait their turn by default (Reading → "Switch to it" lets new ones cut in). A reply that starts on its own plays a short cue a second before the voice. A new message in a session stops that session's reading. Close or Esc means quiet: whatever was waiting stays in History, unplayed.
 - **Ask before reaching further into the Mac.** "Lower other sounds while reading" is off by default because it needs macOS's System Audio Recording permission: a Core Audio tap of every other app, played back quieter. The sound never leaves the Mac and nothing is kept, which keeps it inside on-device only, but a recording prompt is still a surprise unless the person asked for it. So the switch explains the prompt, and macOS asks when it's switched on, not mid-reply. The owner chose this on 2026-11-25, with one known cost: macOS cuts the other apps' output the instant a tap takes over, which can tick; it's timed under the cue sound and happens once per run of replies.
 - **Works the moment it's installed.** The macOS voice reads straight away. The natural voice is an offer, not a gate.
-- **Feels native in each tool.** Each tool gets `/speak` and `/read` the way that tool does commands. In Codex, Readback answers them itself, so they never cost a model reply.
+- **Feels native in each tool.** Each tool gets a speak and a read command the way that tool does commands: `/readback:speak` and `/readback:read` in Claude Code (the owner dropped the bare names on 2026-11-25), `/speak` and `/read` in Codex. Readback answers them itself, so they never cost a model reply.
 - **Mac-native today.** It's a macOS menu bar app with a floating player. That's where it lives now, not a rule. "Away from the Mac" below may need more than one device.
 
 ## Where it's going
 
 Four directions are live. Each one pushes on a hard line somewhere, and that's what to settle before building.
 
-**More agent tools.** Cursor, Gemini CLI, Aider and whatever comes next. Every tool should come with the same things: connect, disconnect, a status that tells the truth (including "waiting for you"), `/speak` and `/read` where the tool allows it, and edits it can undo. Adding a tool should mean writing one new integration, not touching every screen.
+**More agent tools.** Cursor, Gemini CLI, Aider and whatever comes next. Every tool should come with the same things: connect, disconnect, a status that tells the truth (including "waiting for you"), a speak and a read command where the tool allows it, and edits it can undo. Adding a tool should mean writing one new integration, not touching every screen.
 
 **Smarter listening.** Long replies are mostly diffs, logs and tables nobody wants read aloud. Readback already turns code blocks and tables into a short spoken note. Next: say what matters first, offer a spoken summary of a long reply, and say clearly when the agent needs the person (a question, a failure, an approval). This pushes on on-device only. A summary needs a model. Either a local one does it, or the agent writes the spoken version itself, inside its own session. Sending reply text to an outside service is out.
 

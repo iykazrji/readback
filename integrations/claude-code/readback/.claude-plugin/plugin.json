@@ -1,6 +1,6 @@
 {
   "name": "readback",
-  "version": "0.2.0",
-  "description": "Read replies aloud per session: /speak on|off, /read for the last reply now, and a Stop band while one plays.",
+  "version": "0.3.0",
+  "description": "Read replies aloud per session: /readback:speak on|off, /readback:read for the last reply now, and a Stop band while one plays.",
   "types": "./types/index.d.ts"
 }

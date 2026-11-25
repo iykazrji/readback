@@ -64,7 +64,7 @@ Each line says `not installed`, `not connected`, `partly connected` or `connecte
 "$R" connect opencode   # OpenCode
 ```
 
-- **Claude Code:** the person needs to start a new Claude Code session to get `/speak` and `/read`.
+- **Claude Code:** the person needs to start a new Claude Code session to get `/readback:speak` and `/readback:read`.
 - **Claude Code with a second login** (`CLAUDE_CONFIG_DIR` set, often for work): run `CLAUDE_CONFIG_DIR=<that folder> "$R" connect claude` for it too.
 - **Codex:** connecting installs Readback's Codex plugin with the `codex` command. If it says Codex is too old, tell the person to update Codex (`npm install -g @openai/codex@latest` or `brew upgrade codex`), then run the command again.
 - **Codex in Orca** (if `~/Library/Application Support/orca/codex-runtime-home/home` exists): run `CODEX_HOME="$HOME/Library/Application Support/orca/codex-runtime-home/home" "$R" connect codex`.
@@ -109,7 +109,7 @@ The person should hear that sentence. If they don't, check the Mac's volume, the
 
 ## 8. Tell the person how to use it
 
-- In a Claude Code session or a Codex chat, `/speak on` reads that session's replies out loud, `/speak off` stops, and `/read` reads the last reply again.
+- In a Claude Code session, `/readback:speak on` reads that session's replies out loud, `/readback:speak off` stops, and `/readback:read` reads the last reply again. In a Codex chat they're `/speak on`, `/speak off` and `/read`.
 - To hear every reply from a tool without asking, switch it on in Readback's **Reading** page, or run `"$R" auto <claude|codex|opencode> on`.
 - The menu bar icon has **Read last reply**, and opening Readback from Applications shows its window: History, Voices, Reading and Connections.
 

@@ -118,7 +118,7 @@ private struct EmptyReplies: View {
 
     var body: some View {
         EmptyCard(title: "No replies yet",
-                  message: "Connect your coding tools, then type /speak on in a Claude Code session or turn on \u{201C}Read every reply\u{201D} in Reading. Replies show up here as they come in.") {
+                  message: "Connect your coding tools, then type /readback:speak on in a Claude Code session or turn on \u{201C}Read every reply\u{201D} in Reading. Replies show up here as they come in.") {
             Button("Open Connections", action: openConnections)
         }
     }

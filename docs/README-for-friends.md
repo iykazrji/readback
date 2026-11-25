@@ -32,7 +32,7 @@ The voice engines:
 
 **Connections.** The first-run screen connects everything at once. To change it later, open **Connections** and click **Connect** or **Disconnect** next to a tool:
 
-- **Claude Code**: adds two hooks to `~/.claude/settings.json` and the `/speak` and `/read` commands. Start a new Claude Code session afterwards. If you run a second Claude Code login with its own folder (`CLAUDE_CONFIG_DIR`, say for work), connect that one from Terminal: `CLAUDE_CONFIG_DIR=~/.claude-work /Applications/Readback.app/Contents/Helpers/readback connect claude`. Swap `connect` for `disconnect` to undo it.
+- **Claude Code**: adds two hooks to `~/.claude/settings.json` and the `/readback:speak` and `/readback:read` commands. Start a new Claude Code session afterwards. If you run a second Claude Code login with its own folder (`CLAUDE_CONFIG_DIR`, say for work), connect that one from Terminal: `CLAUDE_CONFIG_DIR=~/.claude-work /Applications/Readback.app/Contents/Helpers/readback connect claude`. Swap `connect` for `disconnect` to undo it.
 - **Codex**: installs Readback's Codex plugin, which adds `/speak` and `/read` and two hooks. Codex won't run a plugin's hooks until you approve them, and only you can do that. In the Codex app: quit and reopen it, then open **Settings → Hooks** and approve both Readback hooks. In Codex in a terminal: type `/hooks` and approve them there. The Connections row says "One step left" until you've done it, then turns blue. It works the same in the Codex app and in the terminal, since both use `~/.codex`. If you only use Codex in a terminal, that's fine: Readback finds the `codex` command itself. It needs Codex 0.131.0 or newer (May 2026); Connect tells you if yours is older.
 - **Codex in Orca**: shows up only if you use Orca, which keeps its own Codex settings. Connect it, then type `/hooks` in an Orca Codex pane and approve both Readback hooks.
 - **OpenCode**: adds `~/.config/opencode/plugins/readback.js`. Restart OpenCode.
@@ -43,7 +43,7 @@ Before Readback changes one of those files it keeps the old version beside it, n
 
 Nothing is read out loud until you ask. Three ways to turn it on:
 
-- In a Claude Code session or a Codex chat, type `/speak on`. Only that session is read. `/speak off` stops it, and `/read` reads the last reply right away. In Codex, Readback answers these itself, so they never cost you a model reply.
+- In a Claude Code session, type `/readback:speak on`. Only that session is read. `/readback:speak off` stops it, and `/readback:read` reads the last reply right away. In a Codex chat the same commands are `/speak on`, `/speak off` and `/read`. Readback answers them itself in both tools, so they never cost you a model reply.
 - In **Reading**, switch on "Read every reply out loud" for a tool.
 - From the menu bar icon, **Read last reply** reads the most recent reply from any connected tool.
 

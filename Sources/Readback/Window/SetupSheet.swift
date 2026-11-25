@@ -96,7 +96,7 @@ struct SetupSheet: View {
                     Toggle(isOn: binding(for: home)) {
                         ChoiceLabel(tile: ToolTile(tool: home.tool, connected: working), title: home.title,
                                     detail: working ? "Already connected"
-                                        : row(home)?.status == .outdated ? "Set up by an older Readback. This updates it and adds /speak and /read."
+                                        : row(home)?.status == .outdated ? "Set up by an older Readback. This updates it and adds \(home.tool.speakCommand) and \(home.tool.readCommand)."
                                         : row(home)?.status == .updateAvailable ? "A newer version of Readback's plugin is ready. This installs it."
                                         : nil)
                     }
@@ -150,7 +150,7 @@ struct SetupSheet: View {
                 list.append(Step(id: home.id + ".approve", title: orca ? "Approve Readback in Orca" : "Approve Readback in Codex",
                                  detail: approveDetail(home, state: approve), state: approve))
             } else {
-                let done = home.tool == .claude ? "Connected. Start a new Claude Code session to get /speak and /read."
+                let done = home.tool == .claude ? "Connected. Start a new Claude Code session to get /readback:speak and /readback:read."
                     : "Connected. Restart OpenCode to load it."
                 list.append(Step(id: home.id, title: "Connect \(home.title)",
                                  detail: state == .failed ? (r?.error ?? "") : state == .done ? done : "Connecting…", state: state))
@@ -262,7 +262,7 @@ struct SetupSheet: View {
         let picked = found.filter(chosen.contains)
         var lines: [String] = []
         if picked.contains(where: { $0.tool == .claude }) {
-            lines.append("In a new Claude Code session, type /speak on, then ask anything. Readback reads the reply.")
+            lines.append("In a new Claude Code session, type /readback:speak on, then ask anything. Readback reads the reply.")
         }
         let codex = picked.filter { $0.tool == .codex }
         if !codex.isEmpty {

@@ -3,14 +3,20 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 // Readback for Claude Code: read-aloud per session, off by default.
 //
-//   /speak on | off   switches it for this session (an explicit set, never a toggle)
-//   /speak            says whether it's on here
-//   /read             reads the last reply now, whatever the switch says
+//   /readback:speak on | off   switches it for this session (an explicit set, never a toggle)
+//   /readback:speak            says whether it's on here
+//   /readback:read             reads the last reply now, whatever the switch says
+//
+// The commands are the files in commands/, which Claude Code names after the plugin. The hooks
+// below answer them before they're rendered, so they never reach the model; the files' own text
+// is only a fallback for a session where this module didn't load. (Owner, 2026-11-25: the bare
+// /speak and /read went away for these names. A name registered with $.command.register can't
+// hold a colon, which is why they're files.)
 //
 // Readback.app does the reading; this mod talks to it on 127.0.0.1:8908 and starts it when it
 // isn't running. The Stop hook Readback adds to settings.json hands each finished reply to the
-// app, which reads it when this session (or "every Claude Code reply") is switched on. /speak and
-// /read go to the app's /command, which also answers Codex's, so both tools say the same thing.
+// app, which reads it when this session (or "every Claude Code reply") is switched on. The
+// commands go to the app's /command, which also answers Codex's, so both tools say the same thing.
 // While this session's reply plays, the band above the prompt shows "Reading aloud · 0: Stop".
 
 const BASE = 'http://127.0.0.1:8908'
@@ -63,22 +69,10 @@ export const register: Register = on => {
     me = await $.session.id()
     cwd = e.cwd
 
-    await $.command.register({
-      name: 'speak',
-      description: 'Read replies aloud in this session: /speak on, /speak off',
-      argumentHint: '[on|off]',
-      immediate: true,
-    })
-    await $.command.register({
-      name: 'read',
-      description: 'Read the last reply aloud now',
-      immediate: true,
-    })
-
     if (!e.isInteractive) return result
     poll?.cancel()
     // Readback not answering is a normal state (the person quit it), not an error: the band
-    // just doesn't show. /speak and /read say so when they need the app.
+    // just doesn't show. The commands say so when they need the app.
     poll = $.clock.every(500, async () => {
       const health = (await call($, '/health')) as Health | undefined
       const now = health?.speaking === true && health.session === me
@@ -87,16 +81,16 @@ export const register: Register = on => {
     return result
   })
 
-  on('command.run', { command: 'speak' }, async ($, e) => {
+  on('command.run', { command: 'readback:speak' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
-    if (arg !== '' && arg !== 'on' && arg !== 'off') return { text: 'Use /speak on or /speak off.' }
+    if (arg !== '' && arg !== 'on' && arg !== 'off') return { text: 'Use /readback:speak on or /readback:speak off.' }
     if (!(await reachApp($))) return { text: NOT_RUNNING }
     const asked = arg === '' ? {} : { enabled: arg === 'on' }
     const answer = await call($, '/command', { command: 'speak', tool: 'claude', session: me, ...asked })
     return { text: typeof answer?.text === 'string' ? answer.text : "Readback didn't answer. See ~/Library/Logs/Readback." }
-  })
+  }).catch(() => ({ text: "Readback couldn't answer that. See ~/Library/Logs/Readback." }))
 
-  on('command.run', { command: 'read' }, async $ => {
+  on('command.run', { command: 'readback:read' }, async $ => {
     const messages = await $.session.messages({ last: 40 })
     if ('deny' in messages) return { text: "Couldn't read this session's messages." }
     const last = messages.findLast(m => m.role === 'assistant' && m.text.trim() !== '')
@@ -105,7 +99,7 @@ export const register: Register = on => {
     // The text goes too: if Readback wasn't running when the reply finished, it never got it.
     const answer = await call($, '/command', { command: 'read', tool: 'claude', session: me, text: last.text, cwd })
     return { text: typeof answer?.text === 'string' ? answer.text : "Readback didn't take it. See ~/Library/Logs/Readback." }
-  })
+  }).catch(() => ({ text: "Readback couldn't answer that. See ~/Library/Logs/Readback." }))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || !(await read($, speaking))) return next(e)
