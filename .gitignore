@@ -6,3 +6,4 @@ integrations/claude-code/readback/.claude-plugin/types/
 .DS_Store
 .backup-*/
 .verify-*/
+.superpowers/
