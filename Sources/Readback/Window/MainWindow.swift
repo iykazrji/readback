@@ -63,12 +63,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window = SelfDraggingWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 580),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
-        // An opaque window, after superwhisper: a page colour with the sidebar a step lighter.
-        // (It used to let the desktop show through; the owner found that too busy, 2026-11-24.)
+        // Translucent: each pane draws the desktop blurred under its own tint (GlassBackground).
+        // The owner chose this on 2026-11-25, after an opaque window on 2026-11-24.
         let host = NSHostingView(rootView: root)
         window.contentView = host
-        window.isOpaque = true
-        window.backgroundColor = WindowColors.pageNS
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         // An empty toolbar keeps the title bar at its toolbar height, so the window buttons sit
@@ -122,12 +122,12 @@ struct MainView: View {
         } detail: {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(WindowColors.page)
+                .background(GlassBackground(.underWindowBackground, tint: WindowColors.pageTint))
                 // The page title sits in the title bar's row, level with the window buttons.
                 .ignoresSafeArea(.container, edges: .top)
         }
         .frame(minWidth: 760, minHeight: 500)
-        .containerBackground(WindowColors.page, for: .window)
+        .containerBackground(.clear, for: .window)   // the panes draw their own glass
         .sheet(isPresented: $navigation.showingSetup) {
             SetupSheet(connections: app.connections, replies: app.replies, runtime: app.runtime, downloads: app.downloads, prefs: app.prefs,
                        openConnections: { navigation.section = .connections })
@@ -300,7 +300,7 @@ private struct Sidebar: View {
         .padding(.top, 6)
         .padding(.bottom, 10)
         .frame(maxHeight: .infinity)
-        .background(WindowColors.sidebar.ignoresSafeArea())
+        .background(GlassBackground(.sidebar, tint: WindowColors.sidebarTint).ignoresSafeArea())
     }
 
     private func row(_ section: MainSection) -> some View {

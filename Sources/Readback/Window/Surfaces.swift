@@ -18,10 +18,15 @@ enum Radius {
     static let iconTile: CGFloat = 6
 }
 
-/// The window's colours, after superwhisper: an opaque window, a sidebar a step lighter than
-/// the page, and cards a step lighter than what they sit on. No translucency, no glass: the
-/// owner found the see-through window too busy (2026-11-24).
+/// The window's colours: a translucent window with the desktop blurred behind it, the sidebar
+/// the more see-through pane and a touch darker, the page mostly solid, and cards a step lighter
+/// than what they sit on. The owner chose this (mockup A) on 2026-11-25, reversing the opaque
+/// window of 2026-11-24. The tints are tuned so secondary text holds 4.5:1 over a white or a
+/// black desktop.
 enum WindowColors {
+    /// Laid over the blurred desktop (`GlassBackground`).
+    static let sidebarTint = Color(nsColor: dynamic(light: 0xE4E4E7, dark: 0x101114, alpha: 0.66))
+    static let pageTint = Color(nsColor: dynamic(light: 0xF4F4F5, dark: 0x202126, alpha: 0.84))
     static let page = Color(nsColor: dynamic(light: 0xF4F4F5, dark: 0x1D1E22))
     static let sidebar = Color(nsColor: dynamic(light: 0xEAEAEC, dark: 0x2A2C31))
     static let card = Color(nsColor: dynamic(light: 0xFFFFFF, dark: 0x28292E))
@@ -35,17 +40,16 @@ enum WindowColors {
     /// A hairline that separates rows inside a card.
     static let hairline = Color(nsColor: dynamic(light: 0xE4E4E7, dark: 0x33343A))
 
-    static let pageNS = dynamic(light: 0xF4F4F5, dark: 0x1D1E22)
 
-    private static func dynamic(light: UInt32, dark: UInt32) -> NSColor {
+    private static func dynamic(light: UInt32, dark: UInt32, alpha: CGFloat = 1) -> NSColor {
         NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? rgb(dark) : rgb(light)
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? rgb(dark, alpha) : rgb(light, alpha)
         }
     }
 
-    private static func rgb(_ hex: UInt32) -> NSColor {
+    private static func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {
         NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
     }
 }
 
