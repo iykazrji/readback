@@ -148,11 +148,13 @@ struct SpreadSwitchStyle: ToggleStyle {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) { configuration.label }
             Spacer(minLength: 8)
-            Toggle("", isOn: configuration.$isOn)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .controlSize(.small)
+            ReadbackSwitch(isOn: configuration.$isOn)
         }
+        // One element for VoiceOver: the row's words, read as a switch with its state.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? "on" : "off")
+        .accessibilityAction { configuration.isOn.toggle() }
     }
 }
 

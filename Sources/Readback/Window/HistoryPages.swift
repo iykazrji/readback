@@ -182,8 +182,7 @@ struct HistoryPage: View {
                 Dropdown("Show replies from", selection: $tool,
                          options: [("All tools", Tool?.none)] + Tool.allCases.map { ($0.name, Tool?.some($0)) })
                 .fixedSize()
-                SearchField(text: $search, prompt: "Search replies")
-                    .frame(width: 190)
+                SearchField("Search replies", text: $search)
                 // Straight away, with an undo, rather than a confirmation sheet: the sheet was slow
                 // to appear (0.6-1.3 s) and stood between you and something you can take back.
                 Button("Clear", action: clear)
@@ -272,38 +271,6 @@ struct HistoryPage: View {
             else if calendar.isDateInYesterday(day) { title = "Yesterday" }
             else { title = day.formatted(.dateTime.weekday(.wide).day().month(.wide)) }
             return (day, title, grouped[day] ?? [])
-        }
-    }
-}
-
-/// The Mac's own search field: a magnifier, a clear button, and Esc to empty it.
-private struct SearchField: NSViewRepresentable {
-    @Binding var text: String
-    let prompt: String
-
-    func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField()
-        field.placeholderString = prompt
-        field.sendsSearchStringImmediately = true
-        field.target = context.coordinator
-        field.action = #selector(Coordinator.changed(_:))
-        field.setAccessibilityLabel(prompt)
-        return field
-    }
-
-    func updateNSView(_ field: NSSearchField, context: Context) {
-        context.coordinator.text = $text
-        if field.stringValue != text { field.stringValue = text }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
-
-    final class Coordinator: NSObject {
-        var text: Binding<String>
-        init(text: Binding<String>) { self.text = text }
-
-        @MainActor @objc func changed(_ sender: NSSearchField) {
-            text.wrappedValue = sender.stringValue
         }
     }
 }
