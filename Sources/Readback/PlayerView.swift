@@ -42,7 +42,8 @@ struct PlayerView: View {
     var body: some View {
         VStack(spacing: 0) {
             if replies.showingList {
-                ReplyList(replies: replies, playingID: reader.isActive ? reader.replyID : nil, onPlay: onPlay)
+                ReplyList(replies: replies, playingID: reader.isActive ? reader.replyID : nil,
+                          moving: reader.phase == .playing, onPlay: onPlay)
                     .padding(.horizontal, 6)
                     .padding(.top, 6)
                 Rectangle().fill(Theme.border).frame(height: 1).padding(.horizontal, 12).padding(.top, 4)
@@ -302,7 +303,7 @@ private struct ControlBar: View {
 
             Spacer(minLength: 8)
 
-            Group {
+            HStack(spacing: 4) {
                 IconButton(symbol: "arrow.counterclockwise", help: "Start over", action: reader.restart)
                 IconButton(symbol: "backward.fill", help: "Back a sentence", action: reader.back)
                 IconButton(symbol: playSymbol, help: playHelp, size: 13, action: reader.togglePlay)
@@ -373,28 +374,50 @@ private struct ControlBar: View {
     }
 }
 
+/// The player's transport buttons: 28 pt plates with a hairline edge, like the window's small
+/// controls (the owner approved plates for these on 2026-11-25). Same symbols and actions as before.
 private struct IconButton: View {
     let symbol: String
     let help: String
     var size: CGFloat = 11
     let action: () -> Void
-    @State private var hovering = false
-    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(isEnabled ? Theme.keycapText : Theme.textDim)
-                .frame(width: 26, height: 26)
-                .background(hovering && isEnabled ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .contentShape(Rectangle())
         }
-        .buttonStyle(PressDim())
+        .buttonStyle(Plate())
         .help(help)
         .accessibilityLabel(help)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+
+    private struct Plate: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            PlateBody(configuration: configuration)
+        }
+
+        private struct PlateBody: View {
+            let configuration: Configuration
+            @State private var hovering = false
+            @Environment(\.isEnabled) private var isEnabled
+            @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+            var body: some View {
+                let shape = RoundedRectangle(cornerRadius: ControlMetrics.smallRadius, style: .continuous)
+                configuration.label
+                    .foregroundStyle(isEnabled ? Theme.keycapText : Theme.textDim)
+                    .frame(width: ControlMetrics.smallHeight, height: ControlMetrics.smallHeight)
+                    .background(Color.white.opacity(configuration.isPressed ? 0.16 : hovering ? 0.12 : 0.08), in: shape)
+                    .overlay { shape.strokeBorder(Color.white.opacity(hovering ? 0.20 : 0.13), lineWidth: ControlMetrics.edgeWidth) }
+                    .contentShape(shape)
+                    .opacity(isEnabled ? 1 : 0.5)
+                    .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.press : 1)
+                    .animation(Motion.spring(reduceMotion), value: configuration.isPressed)
+                    .animation(.easeOut(duration: 0.12), value: hovering)
+                    .onHover { hovering = isEnabled && $0 }
+            }
+        }
     }
 }
 
@@ -431,10 +454,8 @@ private struct ListToggle: View {
             replies.showingList.toggle()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "waveform")
-                    .font(.system(size: 12, weight: .semibold))
+                Waveform(playing: reader.phase == .playing, height: 12)
                     .foregroundStyle(Theme.label)
-                    .symbolEffect(.variableColor.iterative, isActive: reader.phase == .playing)
                     .frame(width: 18)
                 // "Codex · readback" when it fits; just the project when it doesn't, which tells
                 // two agents apart better than "Codex · rea…" does.
@@ -491,6 +512,8 @@ private struct ListToggle: View {
 struct ReplyList: View {
     @ObservedObject var replies: Replies
     let playingID: UUID?
+    /// Whether the playing reply is being read right now, rather than paused.
+    var moving = true
     let onPlay: (Reply) -> Void
 
     var body: some View {
@@ -505,7 +528,7 @@ struct ReplyList: View {
                         .padding(12)
                 }
                 ForEach(recent) { reply in
-                    ReplyRow(reply: reply, isPlaying: reply.id == playingID) { onPlay(reply) }
+                    ReplyRow(reply: reply, isPlaying: reply.id == playingID, moving: moving) { onPlay(reply) }
                 }
             }
         }
@@ -516,6 +539,7 @@ struct ReplyList: View {
 private struct ReplyRow: View {
     let reply: Reply
     let isPlaying: Bool
+    var moving = true
     let action: () -> Void
     @State private var hovering = false
 
@@ -570,8 +594,7 @@ private struct ReplyRow: View {
 
     @ViewBuilder private var mark: some View {
         if isPlaying {
-            Image(systemName: "waveform")
-                .font(.system(size: 10, weight: .bold))
+            Waveform(playing: moving, height: 10)
                 .foregroundStyle(Theme.textActive)
         } else if reply.state == .waiting {
             Circle().fill(Theme.dotFilled).frame(width: 6, height: 6)

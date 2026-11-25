@@ -412,16 +412,15 @@ private struct NowPlayingCard: View {
         if reader.isSpeaking {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Image(systemName: "waveform")
-                        .symbolEffect(.variableColor.iterative, isActive: reader.phase == .playing)
-                        .accessibilityHidden(true)
+                    Waveform(playing: reader.phase == .playing, height: 12)
                     Text(reader.phase == .paused ? "Paused" : "Reading").font(.system(size: 11, weight: .semibold))
                         .lineLimit(1)
                         .fixedSize()
                     Spacer()
                     Button("Stop") { app.stopEverything() }
                         .buttonStyle(.readback(.quiet))
-                        .font(.system(size: 11))
+                        .controlSize(.small)   // the card's own scale; a full-size button towered over it
+                        .padding(.vertical, -6)   // keeps the card's first row its old height
                 }
                 Text(reader.title).font(.system(size: 12)).lineLimit(1).truncationMode(.tail)
             }
