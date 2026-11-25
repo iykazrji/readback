@@ -10,16 +10,25 @@ struct VoicesPage: View {
     @ObservedObject var downloads: ModelDownloads
     let preview: () -> Void
     let downloadNow: () -> Void
+    let download: (String) -> Void
+    let cancelDownload: (String) -> Void
     @State private var confirmRemove = false
+
+    private var engineIsThereOrComing: Bool {
+        switch runtime.state {
+        case .installing, .installed, .failed: return true
+        case .notInstalled, .unsupported: return false
+        }
+    }
 
     var body: some View {
         Form {
             Section {
                 ForEach(EngineKind.allCases) { engine in
                     EngineRow(engine: engine, isSelected: prefs.engine == engine, runtime: runtime,
-                              download: downloads.status(for: engine.model?.id)) {
-                        prefs.engine = engine
-                    }
+                              downloads: downloads,
+                              select: { prefs.engine = engine },
+                              download: download, cancel: cancelDownload)
                 }
             } header: {
                 Text("Engine")
@@ -27,10 +36,13 @@ struct VoicesPage: View {
                 FormNote(engineNote)
             }
 
-            if prefs.engine.needsRuntime {
+            // Shown whatever voice is picked once the engine is there or on its way, so Cancel and
+            // Remove are always reachable.
+            if prefs.engine.needsRuntime || engineIsThereOrComing {
                 Section("On-device engine") {
                     runtimeRow
-                    if runtime.state == .installed { modelRow }
+                    // The listed voices download from their own rows above; a custom model has none.
+                    if runtime.state == .installed, prefs.engine == .custom { modelRow }
                 }
             } else if runtime.state == .notInstalled {
                 Section {
@@ -91,7 +103,7 @@ struct VoicesPage: View {
         }
         .formStyle(CardFormStyle())
         .confirmationDialog("Remove the on-device voice engine?", isPresented: $confirmRemove) {
-            Button("Remove", role: .destructive) { Task { await runtime.remove() } }
+            Button("Remove", role: .destructive) { runtime.startRemoving() }
         } message: {
             Text("This deletes its Python and packages (\(Runtime.size)). Downloaded voices stay in ~/.cache/huggingface. Readback falls back to the macOS voice.")
         }
@@ -183,7 +195,7 @@ struct VoicesPage: View {
             return modelIsHere ? base : base + " The first time it speaks, it downloads the voice (\(prefs.engine.model?.size ?? ""))."
         case .qwen3:
             let base = "A bigger model with more expression. It takes a second or two to start each reply. Runs entirely on your Mac."
-            return modelIsHere ? base : base + " The first time it speaks, it downloads the model (\(prefs.engine.model?.size ?? "")), so that first reply can take a few minutes, unless you get it now below."
+            return modelIsHere ? base : base + " The first time it speaks, it downloads the model (\(prefs.engine.model?.size ?? "")), so that first reply can take a few minutes, unless you download it first from its row above."
         case .custom:
             return "Any text-to-speech model mlx-audio can run, by its Hugging Face id. For people who know which model they want."
         }
@@ -235,7 +247,7 @@ struct VoicesPage: View {
             }
         case .failed(let message):
             VStack(alignment: .leading, spacing: 6) {
-                Text("The install didn't finish").foregroundStyle(.red)
+                Text(runtime.removeFailed ? "The removal didn't finish" : "The install didn't finish").foregroundStyle(.red)
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -341,31 +353,132 @@ private struct EngineRow: View {
     let engine: EngineKind
     let isSelected: Bool
     @ObservedObject var runtime: Runtime
-    let download: ModelDownloads.Status?
+    @ObservedObject var downloads: ModelDownloads
     let select: () -> Void
-
+    let download: (String) -> Void
+    let cancel: (String) -> Void
     var body: some View {
-        Button(action: select) {
-            HStack(alignment: .center, spacing: 12) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(name).font(.system(size: 13, weight: .medium))
-                    Text(blurb).font(.system(size: 11.5)).foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 12) {
+            // Picking the voice is the row's main action; its download control sits to the right,
+            // outside it, so downloading a voice never switches to it.
+            Button(action: select) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 15))
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name).font(.system(size: 13, weight: .medium))
+                        Text(blurb).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
                 }
-                Spacer(minLength: 12)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(speed).font(.system(size: 11.5)).foregroundStyle(.secondary)
-                    Text(status).font(.system(size: 11.5)).foregroundStyle(.secondary)
-                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(name)
+            .accessibilityValue(isSelected ? "selected" : "")
+            .accessibilityHint(blurb)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(speed).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                downloadControl
+            }
+            .frame(minWidth: 150, alignment: .trailing)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(name)
-        .accessibilityValue(isSelected ? "selected" : "")
-        .accessibilityHint(blurb)
+    }
+
+    // MARK: The download control
+
+    private enum Place: Equatable {
+        case plain(String)          // a caption, nothing to do
+        case download(String)       // not on this Mac: a button and its size
+        case waiting(String)        // another voice is downloading
+        case downloading(ModelDownloads.Status)
+        case failed(String)
+        case downloaded
+    }
+
+    private var place: Place {
+        switch engine {
+        case .system: return .plain("Ready")
+        case .custom: return .plain(runtime.isInstalled ? "Engine installed" : "Needs the engine")
+        case .kokoro, .melo, .soprano, .qwen3:
+            guard let model = engine.model else { return .plain("") }
+            if !runtime.isInstalled { return .plain("Needs the engine \u{00B7} \(model.size)") }
+            if let status = downloads.status(for: model.id) { return .downloading(status) }
+            // Follows the cache's links to the real files: a folder with only the small config
+            // files in it (a download cut short) doesn't count.
+            if ModelCache().isDownloaded(model.id, expectedBytes: model.bytes) { return .downloaded }
+            if downloads.failure?.model == model.id, let reason = downloads.failure?.reason { return .failed(reason) }
+            if let other = downloads.active?.model, other != model.id {
+                return .waiting(EngineKind.allCases.first { $0.model?.id == other }?.libraryName ?? "another voice")
+            }
+            return .download(model.size.replacingOccurrences(of: "about ", with: ""))
+        }
+    }
+
+    @ViewBuilder private var downloadControl: some View {
+        switch place {
+        case .plain(let text):
+            Text(text).font(.system(size: 11.5)).foregroundStyle(.secondary)
+        case .downloaded:
+            Label("Downloaded", systemImage: "checkmark")
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+        case .download(let size):
+            HStack(spacing: 8) {
+                Text(size).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(.secondary)
+                Button("Download") { if let id = engine.model?.id { download(id) } }
+                    .controlSize(.small)
+                    .help("Download \(name) now, without switching to it")
+                    .accessibilityLabel("Download \(name), \(size)")
+            }
+        case .waiting(let other):
+            HStack(spacing: 8) {
+                Text("After \(other)").font(.system(size: 11.5)).foregroundStyle(.secondary)
+                Button("Download") {}
+                    .controlSize(.small)
+                    .disabled(true)
+                    .help("One voice downloads at a time")
+            }
+        case .downloading(let status):
+            HStack(spacing: 8) {
+                VStack(alignment: .trailing, spacing: 3) {
+                    if let fraction = status.fraction {
+                        ProgressView(value: fraction).frame(width: 110)
+                    } else {
+                        ProgressView().progressViewStyle(.linear).frame(width: 110)
+                    }
+                    Text(status.fraction.map { "\(Int($0 * 100))% \u{00B7} \(status.amount)" } ?? status.amount)
+                        .font(.system(size: 10.5).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    if let id = engine.model?.id { cancel(id) }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Cancel the download and delete what it fetched")
+                .accessibilityLabel("Cancel downloading \(name)")
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Downloading \(name)")
+            .accessibilityValue(status.amount)
+        case .failed(let reason):
+            HStack(spacing: 8) {
+                Text("Didn't finish")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.red)
+                    .help(reason)
+                Button("Retry") { if let id = engine.model?.id { download(id) } }
+                    .controlSize(.small)
+                    .accessibilityLabel("Retry downloading \(name)")
+            }
+        }
     }
 
     private var name: String { engine.libraryName }
@@ -387,23 +500,6 @@ private struct EngineRow: View {
         case .system, .kokoro, .melo, .soprano: return "Starts at once"
         case .qwen3: return "Starts in a second or two"
         case .custom: return "Depends on the model"
-        }
-    }
-
-    private var status: String {
-        switch engine {
-        case .system: return "Ready"
-        case .custom: return runtime.isInstalled ? "Engine installed" : "Needs the engine"
-        case .kokoro, .melo, .soprano, .qwen3:
-            guard let model = engine.model else { return "" }
-            if !runtime.isInstalled { return "Needs the engine \u{00B7} \(model.size)" }
-            if let download {
-                return "Downloading \u{00B7} " + (download.fraction.map { "\(Int($0 * 100))%" } ?? download.amount)
-            }
-            // Follows the cache's links to the real files: a folder with only the small config
-            // files in it (a download cut short) doesn't count.
-            return ModelCache().isDownloaded(model.id, expectedBytes: model.bytes)
-                ? "Downloaded" : "Downloads on first use \u{00B7} \(model.size)"
         }
     }
 }

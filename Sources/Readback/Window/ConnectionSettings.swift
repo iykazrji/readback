@@ -8,16 +8,11 @@ struct ConnectionSettings: View {
     var body: some View {
         Form {
             Section {
-                ForEach(Tool.allCases) { tool in
-                    ConnectionRow(tool: tool, title: tool.name, row: connections.rows[tool],
-                                  lastReply: lastReply(from: tool),
-                                  connect: { connections.connect(tool) },
-                                  disconnect: { connections.disconnect(tool) })
-                }
-                if let orca = connections.orca {
-                    ConnectionRow(tool: .codex, title: "Codex in Orca", row: orca, lastReply: nil, orca: true,
-                                  connect: { connections.connectOrca() },
-                                  disconnect: { connections.disconnectOrca() })
+                ForEach(connections.homes) { home in
+                    ConnectionRow(home: home, row: connections.row(home),
+                                  lastReply: lastReply(to: home),
+                                  connect: { connections.connect(home) },
+                                  disconnect: { connections.disconnect(home) })
                 }
             } header: {
                 Text("Coding tools")
@@ -35,18 +30,19 @@ struct ConnectionSettings: View {
         }
     }
 
-    private func lastReply(from tool: Tool) -> Date? {
-        replies.all.first(where: { $0.source.flatMap(Tool.init(source:)) == tool })?.received
+    /// Replies carry their tool but not which home they came through, so a reply only counts as
+    /// proof for a tool with one home on this Mac.
+    private func lastReply(to home: ToolHome) -> Date? {
+        guard connections.homes.filter({ $0.tool == home.tool }).count == 1 else { return nil }
+        return replies.all.first(where: { $0.request.tool == home.tool })?.received
     }
 }
 
 private struct ConnectionRow: View {
-    let tool: Tool
-    let title: String
+    let home: ToolHome
     let row: Connections.Row?
     /// When the newest reply from this tool arrived, as proof the connection works.
     let lastReply: Date?
-    var orca = false
     let connect: () -> Void
     let disconnect: () -> Void
 
@@ -55,10 +51,10 @@ private struct ConnectionRow: View {
             button
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                ToolTile(tool: tool, connected: ConnectionText.isWorking(tool, row))
+                ToolTile(tool: home.tool, connected: ConnectionText.isWorking(row))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                    Text(ConnectionText.detail(tool, row, lastReply: lastReply, orca: orca))
+                    Text(home.title)
+                    Text(ConnectionText.detail(home, row, lastReply: lastReply))
                         .font(.caption)
                         .foregroundStyle(row?.error == nil ? Color.secondary : Color.red)
                         .fixedSize(horizontal: false, vertical: true)
@@ -70,67 +66,76 @@ private struct ConnectionRow: View {
     }
 
     @ViewBuilder private var button: some View {
-        if row?.busy == true {
+        if row?.busy != nil {
             ProgressView().controlSize(.small)
         } else {
             actionButton
         }
     }
 
+    /// Whatever state it's in, a row with anything of Readback's in it can be disconnected.
     @ViewBuilder private var actionButton: some View {
         switch row?.status {
-        case .connected?: Button("Disconnect", action: disconnect)
-        case .stale?: Button("Reconnect", action: connect)
-        case .outdated?, .updateAvailable?: Button("Update", action: connect)
+        case .connected?, .waitingForApproval?: Button("Disconnect", action: disconnect)
+        case .stale?, .incomplete?: repairButtons("Reconnect")
+        case .outdated?, .updateAvailable?: repairButtons("Update")
         default: Button("Connect", action: connect).disabled(row?.installed != true)
+        }
+    }
+
+    private func repairButtons(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            Button("Disconnect", action: disconnect)
+            Button(title, action: connect)
         }
     }
 }
 
-/// What a tool's row says, shared by Connections and the first-run setup sheet so they agree.
+/// What a tool home's row says, shared by Connections and the first-run setup sheet so they agree.
 enum ConnectionText {
-    /// Fully working: connected, and for Codex, approved.
-    static func isWorking(_ tool: Tool, _ row: Connections.Row?) -> Bool {
-        row?.status == .connected && (tool != .codex || row?.approved == true)
+    static func isWorking(_ row: Connections.Row?) -> Bool {
+        row?.status == .connected
     }
 
-    /// Slash commands, kept on one line: a plain "/" lets the text wrap between "/" and "hooks".
-    static func command(_ text: String) -> String {
-        text.replacingOccurrences(of: "/", with: "/\u{2060}")
+    /// Where the person approves Readback's hooks. Orca's Codex has its own home, which the Codex
+    /// app never reads.
+    static func howToApprove(_ home: ToolHome) -> String {
+        home == .orcaCodex
+            ? "In an Orca Codex pane, type /hooks and approve both Readback hooks."
+            : "In the Codex app, quit and reopen it, then open Settings > Hooks and approve both Readback hooks. In a terminal, type /hooks."
     }
 
-    /// `orca`: the row for Codex in Orca, which has its own Codex home that the Codex app never reads.
-    static func detail(_ tool: Tool, _ row: Connections.Row?, lastReply: Date?, orca: Bool = false) -> String {
-        if row?.busy == true { return row?.status == .connected ? "Disconnecting…" : "Connecting…" }
+    static func detail(_ home: ToolHome, _ row: Connections.Row?, lastReply: Date?) -> String {
+        if let busy = row?.busy { return busy == .disconnecting ? "Disconnecting…" : "Connecting…" }
         if let error = row?.error { return error }
         guard let row, row.installed else { return "Not installed on this Mac." }
         switch row.status {
         case .stale:
             return "Connected to another copy of Readback (the app moved?). Reconnect to use this one."
+        case .incomplete:
+            return home.tool == .codex
+                ? "Readback's Codex plugin is switched on but isn't installed, or its hooks are missing. Reconnect to put it back."
+                : "Part of Readback's setup is missing here (a hook or the /speak commands). Reconnect to put it back."
         case .outdated:
-            return "Connected the old way, without \(command("/speak")) or \(command("/read")). Update to switch to Readback's Codex plugin. Codex then asks you to approve its hooks once more."
+            return "Connected the old way, without /speak or /read. Update to switch to Readback's Codex plugin. Codex then asks you to approve its hooks once more."
         case .updateAvailable:
             return "Connected. A newer version of Readback's Codex plugin is ready: Update installs it, and Codex asks you to approve its hooks once more."
+        case .waitingForApproval:
+            return "One step left. \(howToApprove(home))"
         case .connected:
-            switch tool {
-            case .claude: return "Connected. In a session: \(command("/speak on, /speak off, /read")). Start a new session to pick up the commands."
+            switch home.tool {
+            case .claude: return "Connected. In a session: /speak on, /speak off, /read. Start a new session to pick up the commands."
             case .codex:
-                guard row.approved else {
-                    if orca {
-                        return "One step left: in an Orca Codex pane, type \(command("/hooks")) and approve Readback's two hooks."
-                    }
-                    return "One step left: approve Readback's two hooks in Codex. In the Codex app, open Settings > Hooks (quit and reopen the app first if it's open). In the terminal, type \(command("/hooks"))."
-                }
                 if let lastReply {
-                    return "Working. Last reply \(lastReply.formatted(.relative(presentation: .named))). In a chat: \(command("/speak on, /speak off, /read"))."
+                    return "Working. Last reply \(lastReply.formatted(.relative(presentation: .named))). In a chat: /speak on, /speak off, /read."
                 }
-                return "Connected. In a chat: \(command("/speak on, /speak off, /read")). Send a message in Codex to try it."
+                return "Connected. In a chat: /speak on, /speak off, /read. Send a message in Codex to try it."
             case .opencode: return "Connected. Restart OpenCode to load the plugin."
             }
         case .notConnected:
-            switch tool {
-            case .claude: return "Edits ~/.claude/settings.json and adds the \(command("/speak")) and \(command("/read")) commands."
-            case .codex: return "Installs Readback's Codex plugin, with \(command("/speak")) and \(command("/read"))."
+            switch home.tool {
+            case .claude: return "Edits ~/.claude/settings.json and adds the /speak and /read commands."
+            case .codex: return "Installs Readback's Codex plugin, with /speak and /read."
             case .opencode: return "Adds ~/.config/opencode/plugins/readback.js."
             }
         }

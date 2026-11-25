@@ -15,8 +15,8 @@ struct ReadingSettings: View {
             Section {
                 ForEach(Tool.allCases) { tool in
                     Toggle(tool.name, isOn: Binding(
-                        get: { prefs.autoRead[tool] ?? false },
-                        set: { prefs.setAutoRead(tool, $0) }
+                        get: { prefs.readsEveryReply(tool) },
+                        set: { prefs.setReadsEveryReply(tool, $0) }
                     ))
                     .accessibilityLabel("Read every \(tool.name) reply out loud")
                 }

@@ -6,6 +6,7 @@
 #   Contents/Helpers/readback               the CLI the coding tools' hooks run
 #   Contents/Helpers/uv                     installs the on-device voice engine
 #   Contents/Resources/ClaudeCodePlugin     the Claude Code mod (/speak, /read, the Stop band)
+#   Contents/Resources/CodexPluginAssets    the Codex plugin's artwork
 #   Contents/Resources/AppIcon.icns, MenuBarIcon(@2x).png, ThirdPartyNotices.txt
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -26,13 +27,10 @@ cp .build/release/readback-cli "$APP/Contents/Helpers/readback"
 cp "$UV" "$APP/Contents/Helpers/uv"
 cp Resources/ThirdPartyNotices.txt "$APP/Contents/Resources/"
 
-# The Claude Code mod, without its tests or editor-only files.
-PLUGIN="$APP/Contents/Resources/ClaudeCodePlugin"
-mkdir -p "$PLUGIN/.claude-plugin" "$PLUGIN/hooks" "$PLUGIN/types"
-SRC=integrations/claude-code/readback
-cp "$SRC/.claude-plugin/plugin.json" "$PLUGIN/.claude-plugin/"
-cp "$SRC/hooks/hooks.json" "$SRC/hooks/register.tsx" "$PLUGIN/hooks/"
-cp "$SRC/types/index.d.ts" "$PLUGIN/types/"
+# The Claude Code mod, without its tests, editor config or the type files Claude Code generates.
+# These folder names are AppBundle.swift's; the app and the CLI find everything through it.
+rsync -a --exclude tests --exclude tsconfig.json --exclude .claude-plugin/types \
+  integrations/claude-code/readback/ "$APP/Contents/Resources/ClaudeCodePlugin/"
 
 # Icon: Cadence, rendered in Blender (source in design/icon), in every size
 # macOS wants; and its menu bar template, 18 pt at 1× and 2×.

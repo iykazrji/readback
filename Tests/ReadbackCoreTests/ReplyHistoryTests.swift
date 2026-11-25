@@ -54,9 +54,50 @@ final class ReplyHistoryTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("history-\(UUID()).json")
         defer { try? FileManager.default.removeItem(at: url) }
         try history.save(to: url)
-        let loaded = try XCTUnwrap(ReplyHistory.load(from: url))
+        let loaded = try XCTUnwrap(try ReplyHistory.load(from: url))
         XCTAssertEqual(loaded.replies.map(\.text), ["kept for later"])
         XCTAssertEqual(loaded.replies.first?.id, history.replies.first?.id)
-        XCTAssertNil(ReplyHistory.load(from: url.appendingPathExtension("missing")))
+        XCTAssertNil(try ReplyHistory.load(from: url.appendingPathExtension("missing")))
+    }
+}
+
+final class ReplyHistoryCapTests: XCTestCase {
+    private func backlog() -> ReplyQueue {
+        var queue = ReplyQueue()
+        let busy = ReplyQueue.Reading(replyID: UUID(), session: "other", isSpeaking: true)
+        for i in 0..<60 { _ = queue.received(SpeakRequest(text: "r\(i)", session: "s"), switchedOn: true, reading: busy, cutIn: false) }
+        return queue
+    }
+
+    /// B15: a backlog that stops waiting falls back under the cap, as on add, keeping the newest.
+    func testTheCapHoldsOnceABacklogIsStopped() {
+        var queue = backlog()
+        XCTAssertEqual(queue.history.replies.count, 60, "waiting replies are never dropped")
+        _ = queue.stopAll()
+        XCTAssertEqual(queue.history.replies.count, 50)
+        XCTAssertEqual(queue.history.replies.first?.text, "r59")
+
+        var session = backlog()
+        _ = session.stop(session: "s", reading: nil)
+        XCTAssertEqual(session.history.replies.count, 50)
+        XCTAssertEqual(ReplyQueue(restoring: backlog().history).history.replies.count, 50)
+    }
+
+    func testPlayingThroughABacklogDropsTheOldestFirst() {
+        var queue = backlog()
+        guard case .play(let first, _) = queue.playNext(reading: nil) else { return XCTFail("nothing played") }
+        XCTAssertEqual(first.text, "r0")
+        XCTAssertEqual(queue.history.replies.count, 59, "r0 played and was the oldest finished one")
+        XCTAssertNil(queue.history.replies.first(where: { $0.text == "r0" }))
+    }
+}
+
+final class UnreadableHistoryTests: XCTestCase {
+    /// A history that's there but can't be read throws, so the app keeps it rather than saving over it.
+    func testACorruptHistoryThrowsInsteadOfComingBackEmpty() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("history-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try "{ half a hist".write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try ReplyHistory.load(from: url))
     }
 }

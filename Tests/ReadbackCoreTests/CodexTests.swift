@@ -24,10 +24,12 @@ final class CodexPromptTests: XCTestCase {
     }
 
     func testBackgroundJobsHaveNoSavedChat() {
-        XCTAssertTrue(CodexHookPayload.isBackgroundJob(transcriptPath: nil))
-        XCTAssertTrue(CodexHookPayload.isBackgroundJob(transcriptPath: ""))
-        XCTAssertTrue(CodexHookPayload.isBackgroundJob(transcriptPath: "/gone.jsonl", fileExists: { _ in false }))
-        XCTAssertFalse(CodexHookPayload.isBackgroundJob(transcriptPath: "/chat.jsonl", fileExists: { _ in true }))
+        func payload(_ path: String?) -> HookPayload { HookPayload(json: path.map { ["transcript_path": $0] } ?? [:]) }
+        XCTAssertTrue(payload(nil).isBackgroundJob(.codex))
+        XCTAssertTrue(payload("").isBackgroundJob(.codex))
+        XCTAssertTrue(payload("/gone.jsonl").isBackgroundJob(.codex, fileExists: { _ in false }))
+        XCTAssertFalse(payload("/chat.jsonl").isBackgroundJob(.codex, fileExists: { _ in true }))
+        XCTAssertFalse(payload(nil).isBackgroundJob(.opencode), "only Codex runs background jobs")
     }
 }
 
@@ -187,11 +189,10 @@ final class CodexIntegrationTests: XCTestCase {
             ["plugin", "add", "readback@readback"],
         ])
         XCTAssertTrue(calls.allSatisfy { $0.codexHome == codexHome.path })
-        XCTAssertEqual(try files.status(.codex), .connected)
-        XCTAssertFalse(files.codexHooksApproved(home: codexHome))
+        XCTAssertEqual(try files.status(.codex), .waitingForApproval)
 
         try approve(codexHome)
-        XCTAssertTrue(files.codexHooksApproved(home: codexHome))
+        XCTAssertEqual(try files.status(.codex), .connected)
 
         try files.disconnect(.codex)
         XCTAssertEqual(calls.suffix(2).map(\.args), [["plugin", "remove", "readback@readback"], ["plugin", "marketplace", "remove", "readback"]])
@@ -207,7 +208,7 @@ final class CodexIntegrationTests: XCTestCase {
         try files.connect(.codex)
         let after = try FileManager.default.attributesOfItem(atPath: hooks.path)[.modificationDate] as? Date
         XCTAssertEqual(before, after)
-        XCTAssertEqual(try files.status(.codex), .connected)
+        XCTAssertEqual(try files.status(.codex), .waitingForApproval)
     }
 
     func testOldHooksShowAsOutdatedAndConnectSwapsThemForThePlugin() throws {
@@ -239,14 +240,14 @@ final class CodexIntegrationTests: XCTestCase {
         try files.connect(.codex)
         XCTAssertEqual(try String(contentsOf: hooksFile, encoding: .utf8), original)
         XCTAssertTrue(FileManager.default.fileExists(atPath: hooksFile.appendingPathExtension("before-readback").path))
-        XCTAssertEqual(try files.status(.codex), .connected)
+        XCTAssertEqual(try files.status(.codex), .waitingForApproval)
     }
 
     func testAPluginRunningAnotherCopyOfReadbackIsStale() throws {
         try files().connect(.codex)
         let moved = IntegrationFiles(paths: ReadbackPaths(home: home), cli: "/Users/me/Downloads/Readback.app/Contents/Helpers/readback",
                                      bundledPlugin: nil, codex: fakeCodex)
-        guard case .stale = try moved.codexStatus(home: moved.paths.codexDir) else { return XCTFail("expected stale") }
+        guard case .stale = try moved.status(.codex) else { return XCTFail("expected stale") }
     }
 
     func testOrcaIsConnectedSeparatelyAndStaysInsideTheFakeHome() throws {
@@ -254,12 +255,14 @@ final class CodexIntegrationTests: XCTestCase {
         let orca = files.paths.orcaCodexDir
         XCTAssertTrue(orca.path.hasPrefix(home.path))
         XCTAssertTrue(files.paths.codexPluginSource.path.hasPrefix(home.path))
-        XCTAssertThrowsError(try files.connectCodex(home: orca))   // Orca isn't installed yet
+        XCTAssertFalse(files.homes.contains(.orcaCodex))
+        XCTAssertThrowsError(try files.connect(.orcaCodex))   // Orca isn't installed yet
         try FileManager.default.createDirectory(at: orca, withIntermediateDirectories: true)
+        XCTAssertTrue(files.homes.contains(.orcaCodex))
 
-        try files.connectCodex(home: orca)
+        try files.connect(.orcaCodex)
         XCTAssertTrue(calls.allSatisfy { $0.codexHome == orca.path })
-        XCTAssertEqual(try files.codexStatus(home: orca), .connected)
+        XCTAssertEqual(try files.status(.orcaCodex), .waitingForApproval)
         XCTAssertEqual(try files.status(.codex), .notConnected)    // ~/.codex is untouched
     }
 
@@ -273,12 +276,12 @@ final class CodexIntegrationTests: XCTestCase {
         try fm.createSymbolicLink(at: orca.appendingPathComponent("plugins"), withDestinationURL: files.paths.codexDir.appendingPathComponent("plugins"))
 
         try files.connect(.codex)
-        try files.connectCodex(home: orca)
-        XCTAssertEqual(try files.codexStatus(home: orca), .connected)
+        try files.connect(.orcaCodex)
+        XCTAssertEqual(try files.status(.orcaCodex), .waitingForApproval)
 
-        try files.disconnectCodex(home: orca)
-        XCTAssertEqual(try files.codexStatus(home: orca), .notConnected)
-        XCTAssertEqual(try files.status(.codex), .connected)
+        try files.disconnect(.orcaCodex)
+        XCTAssertEqual(try files.status(.orcaCodex), .notConnected)
+        XCTAssertEqual(try files.status(.codex), .waitingForApproval)
         XCTAssertEqual(calls.last?.args, ["plugin", "add", "readback@readback"])
         XCTAssertEqual(calls.last?.codexHome, files.paths.codexDir.path)
     }
@@ -348,8 +351,8 @@ final class CodexPluginArtworkTests: XCTestCase {
             try hooks.write(to: url, atomically: true, encoding: .utf8)
         }
         try install("1.0.0")
-        XCTAssertEqual(try files.codexStatus(home: codex), .updateAvailable)
+        XCTAssertEqual(try files.status(.codex), .updateAvailable)
         try install(CodexPlugin.version)
-        XCTAssertEqual(try files.codexStatus(home: codex), .connected)
+        XCTAssertEqual(try files.status(.codex), .waitingForApproval)
     }
 }

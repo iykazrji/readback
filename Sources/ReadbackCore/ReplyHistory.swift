@@ -18,6 +18,10 @@ public struct Reply: Codable, Identifiable, Equatable {
     public var session: String?
     public var received: Date
     public var state: State
+    /// When /read played this as the tool's last reply. Until that turn's Stop hook comes in
+    /// (at most `ReplyQueue.hookWait`, and never past the session's next prompt), the hook's
+    /// copy joins this one rather than being a second reply.
+    public var awaitingHookSince: Date?
 
     public init(id: UUID = UUID(), text: String, source: String?, cwd: String?, session: String?,
                 received: Date = Date(), state: State) {
@@ -60,14 +64,25 @@ public struct ReplyHistory: Codable, Equatable {
 
     public mutating func add(_ reply: Reply) {
         replies.insert(reply, at: 0)
-        while replies.count > limit, let i = replies.lastIndex(where: { $0.state != .waiting }) {
-            replies.remove(at: i)
-        }
+        trim()
     }
 
+    /// A reply that stops waiting can be dropped again, so the cap applies here too.
     public mutating func mark(_ id: UUID, _ state: Reply.State) {
         guard let i = replies.firstIndex(where: { $0.id == id }) else { return }
         replies[i].state = state
+        trim()
+    }
+
+    public mutating func update(_ id: UUID, _ change: (inout Reply) -> Void) {
+        guard let i = replies.firstIndex(where: { $0.id == id }) else { return }
+        change(&replies[i])
+    }
+
+    /// Marks every reply that matches, then applies the cap once, so the newest survive.
+    public mutating func markAll(where matches: (Reply) -> Bool, _ state: Reply.State) {
+        for i in replies.indices where matches(replies[i]) { replies[i].state = state }
+        trim()
     }
 
     public func reply(_ id: UUID) -> Reply? { replies.first { $0.id == id } }
@@ -98,6 +113,11 @@ public struct ReplyHistory: Codable, Equatable {
         let present = Set(replies.map(\.id))
         replies += cleared.filter { !present.contains($0.id) }
         replies.sort { $0.received > $1.received }
+        trim()
+    }
+
+    /// Over the limit, the oldest finished replies go; waiting ones never do.
+    private mutating func trim() {
         while replies.count > limit, let i = replies.lastIndex(where: { $0.state != .waiting }) {
             replies.remove(at: i)
         }
@@ -105,17 +125,18 @@ public struct ReplyHistory: Codable, Equatable {
 
     // MARK: Saving
 
-    public static func load(from url: URL) -> ReplyHistory? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
+    /// nil when there's no saved history yet. Throws when there is one it can't read, so the
+    /// caller can keep that file rather than save over it.
+    public static func load(from url: URL) throws -> ReplyHistory? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(ReplyHistory.self, from: data)
+        return try decoder.decode(ReplyHistory.self, from: Data(contentsOf: url))
     }
 
     public func save(to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoder.encode(self).write(to: url, options: .atomic)
+        try PrivateFiles.write(encoder.encode(self), to: url)
     }
 }

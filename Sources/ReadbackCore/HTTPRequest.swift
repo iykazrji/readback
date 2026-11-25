@@ -15,12 +15,14 @@ public struct HTTPRequest: Equatable {
     }
 
     public static let maxBodyBytes = 2_000_000
+    public static let maxHeaderBytes = 64_000
 
     public static func parse(_ data: Data) -> Parse {
         let separator = Data("\r\n\r\n".utf8)
         guard let headerEnd = data.range(of: separator) else {
-            return data.count > 64_000 ? .invalid("headers too large") : .incomplete
+            return data.count > maxHeaderBytes ? .invalid("headers too large") : .incomplete
         }
+        guard headerEnd.lowerBound <= maxHeaderBytes else { return .invalid("headers too large") }
         guard let head = String(data: data[..<headerEnd.lowerBound], encoding: .utf8) else {
             return .invalid("headers aren't UTF-8")
         }
@@ -53,43 +55,20 @@ public struct HTTPRequest: Equatable {
 
 public enum HTTPResponse {
     public static func json(_ status: Int, _ object: [String: Any]) -> Data {
-        let body = (try? JSONSerialization.data(withJSONObject: object)) ?? Data("{}".utf8)
-        let reason = [200: "OK", 202: "Accepted", 400: "Bad Request", 404: "Not Found", 405: "Method Not Allowed"][status] ?? "OK"
+        response(status, (try? JSONSerialization.data(withJSONObject: object)) ?? Data("{}".utf8))
+    }
+
+    public static func json<T: Encodable>(_ status: Int, _ value: T) -> Data {
+        response(status, (try? JSONEncoder().encode(value)) ?? Data("{}".utf8))
+    }
+
+    private static func response(_ status: Int, _ body: Data) -> Data {
+        let reason = [200: "OK", 202: "Accepted", 400: "Bad Request", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed",
+                      415: "Unsupported Media Type", 500: "Internal Server Error"][status] ?? "OK"
         var head = "HTTP/1.1 \(status) \(reason)\r\n"
         head += "Content-Type: application/json\r\n"
         head += "Content-Length: \(body.count)\r\n"
         head += "Connection: close\r\n\r\n"
         return Data(head.utf8) + body
-    }
-}
-
-/// What the hooks send to POST /speak.
-public struct SpeakRequest: Decodable, Equatable {
-    public var text: String
-    public var source: String?
-    public var cwd: String?
-    /// true: read it now. false: only keep it as the last reply. Absent: the app decides
-    /// from that tool's auto-read switch.
-    public var autoplay: Bool?
-    /// The tool's session id, when it sent one: lets a session switch read-aloud on for itself
-    /// and stop only its own reading.
-    public var session: String?
-
-    public init(text: String, source: String? = nil, cwd: String? = nil, autoplay: Bool? = nil, session: String? = nil) {
-        self.text = text
-        self.source = source
-        self.cwd = cwd
-        self.autoplay = autoplay
-        self.session = session
-    }
-
-    public var tool: Tool? { source.flatMap(Tool.init(source:)) }
-
-    /// "Claude Code · inkine": the tool, then the project folder it ran in.
-    public var title: String {
-        let tool = self.tool?.name ?? ((source?.isEmpty == false) ? source! : "Agent")
-        guard let cwd, !cwd.isEmpty else { return tool }
-        let folder = URL(fileURLWithPath: cwd).lastPathComponent
-        return folder.isEmpty || folder == "/" ? tool : "\(tool) · \(folder)"
     }
 }

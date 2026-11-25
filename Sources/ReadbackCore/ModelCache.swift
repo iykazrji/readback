@@ -70,13 +70,84 @@ public struct ModelCache {
         return (bytes, files, weights, broken)
     }
 
-    /// Whether the model is on disk in full. For a model whose size is known, that's the bytes
-    /// (a little slack for a re-published file); otherwise, weights present and no broken links.
+    /// Whether the model is on disk in full, as mlx-audio needs it to load: no broken links,
+    /// weights, its config.json (mlx-audio refuses a model without one), and every shard a
+    /// `*.safetensors.index.json` names. A known size has to add up too (a little slack for a
+    /// re-published file).
     public func isDownloaded(_ model: String, expectedBytes: Int64? = nil) -> Bool {
         let found = contents(of: model)
-        guard found.broken == 0, found.weights > 0 else { return false }
+        guard found.broken == 0, found.weights > 0, let snapshot = snapshot(for: model) else { return false }
+        guard let config = FileManager.default.contents(atPath: snapshot.appendingPathComponent("config.json").path),
+              (try? JSONSerialization.jsonObject(with: config)) is [String: Any],
+              let shards = indexedShards(in: snapshot) else { return false }
+        for shard in shards where !isRegularFile(snapshot.appendingPathComponent(shard)) { return false }
         if let expectedBytes { return Double(found.bytes) >= Double(expectedBytes) * 0.98 }
         return true
+    }
+
+    /// The weight files the snapshot's safetensors indexes list; nil when an index is there but
+    /// can't be read (a download cut short), so the model doesn't count as complete.
+    private func indexedShards(in snapshot: URL) -> Set<String>? {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: snapshot.path)) ?? []
+        var shards: Set<String> = []
+        for name in names where name.hasSuffix(".safetensors.index.json") {
+            guard let data = FileManager.default.contents(atPath: snapshot.appendingPathComponent(name).path),
+                  let index = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let map = index["weight_map"] as? [String: String] else { return nil }
+            shards.formUnion(map.values)
+        }
+        return shards
+    }
+
+    /// Through any links: a file, not a folder or a dangling link.
+    private func isRegularFile(_ url: URL) -> Bool {
+        (try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+    }
+
+    /// Deletes a model from the cache, whole or half downloaded: its folder, and the files in the
+    /// shared store that only its links point to. A file another model's links also point to
+    /// stays. Returns the bytes freed.
+    @discardableResult
+    public func remove(_ model: String) throws -> Int64 {
+        let fm = FileManager.default
+        let mine = folder(for: model)
+        guard fm.fileExists(atPath: mine.path) else { return 0 }
+        let hubPath = hub.resolvingSymlinksInPath().path + "/"
+        let others = ((try? fm.contentsOfDirectory(at: hub, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("models--") && $0.lastPathComponent != mine.lastPathComponent }
+        let elsewhere = others.reduce(into: Set<String>()) { $0.formUnion(Self.linkTargets(in: $1)) }
+        var freed: Int64 = 0
+        for target in Self.linkTargets(in: mine) where target.hasPrefix(hubPath) && !elsewhere.contains(target) {
+            // Inside the model's own folder goes with the folder below; only the shared store's here.
+            guard !target.hasPrefix(mine.resolvingSymlinksInPath().path + "/") else { continue }
+            freed += ((try? fm.attributesOfItem(atPath: target)[.size]) as? NSNumber)?.int64Value ?? 0
+            try fm.removeItem(atPath: target)
+        }
+        freed += Self.bytes(in: mine)
+        try fm.removeItem(at: mine)
+        return freed
+    }
+
+    /// Where every link under `folder` really points, as resolved paths.
+    private static func linkTargets(in folder: URL) -> Set<String> {
+        guard let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isSymbolicLinkKey]) else { return [] }
+        var targets: Set<String> = []
+        for case let url as URL in walker where (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+            let real = url.resolvingSymlinksInPath()
+            if FileManager.default.fileExists(atPath: real.path) { targets.insert(real.path) }
+        }
+        return targets
+    }
+
+    /// The real files under `folder`, not following links.
+    private static func bytes(in folder: URL) -> Int64 {
+        guard let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in walker {
+            guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), values.isRegularFile == true else { continue }
+            total += Int64(values.fileSize ?? 0)
+        }
+        return total
     }
 
     private func modified(_ url: URL) -> Date {

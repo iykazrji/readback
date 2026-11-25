@@ -1,6 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
 type Call = { url: string; body?: unknown }
+/** Every POST must say JSON, or the app refuses it (ControlProtocol.swift `parse`). */
+const posts: { method?: string; contentType?: string }[] = []
 
 // Each hook stands for the engine beneath the mod: a call on `$` is answered `{ value }`.
 // `app` answers the Readback app's HTTP endpoints; undefined means "not running".
@@ -24,6 +26,7 @@ function engine(
     const path = e.url.replace('http://127.0.0.1:8908', '')
     const body = e.init?.body ? JSON.parse(e.init.body) : undefined
     calls.push({ url: path, body })
+    if (body !== undefined) posts.push({ method: e.init?.method, contentType: (e.init?.headers as any)?.['Content-Type'] })
     const answer = app?.(path, body)
     if (!answer) return { deny: 'connection refused' }
     return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(answer) } }
@@ -31,10 +34,10 @@ function engine(
   return { calls, runs }
 }
 
+// The app writes the answers (ControlProtocol.swift's CommandAnswer); the mod shows them as sent.
 const running = (path: string, body: any) => {
   if (path === '/health') return { ok: true, speaking: false }
-  if (path === '/session') return { session: body.session, enabled: body.enabled ?? false }
-  if (path === '/speak') return { accepted: true }
+  if (path === '/command') return { text: `answer to ${body.command}` }
   return { ok: true }
 }
 
@@ -46,16 +49,16 @@ test('/speak on sets this session on, explicitly', async ($, on) => {
   const { calls } = engine(on, [], running)
   await start($)
   const { text } = await $.command.run({ command: 'speak', args: 'on' })
-  expect(calls.at(-1)).toEqual({ url: '/session', body: { session: 'sess-123', enabled: true } })
-  expect(text).toBe('Read-aloud is on for this session.')
+  expect(calls.at(-1)).toEqual({ url: '/command', body: { command: 'speak', tool: 'claude', session: 'sess-123', enabled: true } })
+  expect(text).toBe('answer to speak')
 })
 
 test('/speak with no argument reads the state and never sets it', async ($, on) => {
   const { calls } = engine(on, [], running)
   await start($)
   const { text } = await $.command.run({ command: 'speak', args: '' })
-  expect(calls.at(-1)).toEqual({ url: '/session', body: { session: 'sess-123' } })
-  expect(text).toMatch(/off in this session/)
+  expect(calls.at(-1)).toEqual({ url: '/command', body: { command: 'speak', tool: 'claude', session: 'sess-123' } })
+  expect(text).toBe('answer to speak')
 })
 
 test('/speak with anything else explains itself and calls nothing', async ($, on) => {
@@ -76,10 +79,10 @@ test('/read sends the last reply with text, for this session', async ($, on) => 
   await start($)
   const { text } = await $.command.run({ command: 'read', args: '' })
   expect(calls.at(-1)).toEqual({
-    url: '/speak',
-    body: { text: 'The real answer.', source: 'claude', session: 'sess-123', cwd: '/Users/me/project', autoplay: true },
+    url: '/command',
+    body: { command: 'read', tool: 'claude', session: 'sess-123', text: 'The real answer.', cwd: '/Users/me/project' },
   })
-  expect(text).toBe('Reading the last reply.')
+  expect(text).toBe('answer to read')
 })
 
 test('/read with no reply yet says so and calls nothing', async ($, on) => {
@@ -96,4 +99,14 @@ test('when Readback is not running, the mod tries to start it, then says so', as
   const { text } = await $.command.run({ command: 'speak', args: 'on' })
   expect(runs[0]).toEqual(['/usr/bin/open', '-g', '-b', 'local.readback', '--args', '--background'])
   expect(text).toMatch(/isn't running/)
+})
+
+test('every call with a body is a JSON POST', async ($, on) => {
+  posts.length = 0
+  engine(on, [{ role: 'assistant', text: 'Hi.' }], running)
+  await start($)
+  await $.command.run({ command: 'speak', args: 'on' })
+  await $.command.run({ command: 'read', args: '' })
+  expect(posts.length).toBe(2)
+  for (const p of posts) expect(p).toEqual({ method: 'POST', contentType: 'application/json' })
 })

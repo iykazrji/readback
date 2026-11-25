@@ -15,28 +15,16 @@ struct SetupSheet: View {
     let openConnections: () -> Void
     @Environment(\.dismiss) private var dismiss
 
-    /// One coding tool to connect: a tool's own folder, or Codex in Orca.
-    private struct Target: Identifiable, Hashable {
-        let tool: Tool
-        let orca: Bool
-        var id: String { orca ? "orca" : tool.rawValue }
-        var title: String { orca ? "Codex in Orca" : tool.name }
-    }
-
-    @State private var chosen: Set<Target> = []
+    @State private var chosen: Set<ToolHome> = []
     /// Install the engine and Kokoro, the default voice. Ticked unless it's already there.
     @State private var getVoice = true
     @State private var started = false
 
-    private var found: [Target] {
-        var targets = Tool.allCases.filter { connections.rows[$0]?.installed == true }.map { Target(tool: $0, orca: false) }
-        if connections.orca != nil { targets.append(Target(tool: .codex, orca: true)) }
-        return targets
+    private var found: [ToolHome] {
+        connections.homes.filter { connections.row($0)?.installed == true }
     }
 
-    private func row(_ target: Target) -> Connections.Row? {
-        target.orca ? connections.orca : connections.rows[target.tool]
-    }
+    private func row(_ home: ToolHome) -> Connections.Row? { connections.row(home) }
 
     /// The natural voice can be offered: Apple silicon, and not installed or installing already.
     private var voiceOffered: Bool {
@@ -67,7 +55,7 @@ struct SetupSheet: View {
             connections.refresh()
             runtime.refresh()
             // Everything found starts ticked, except what's already working.
-            chosen = Set(found.filter { !ConnectionText.isWorking($0.tool, row($0)) })
+            chosen = Set(found.filter { !ConnectionText.isWorking(row($0)) })
             getVoice = voiceOffered
         }
         // Codex's approval happens in Codex, so keep looking while the sheet is open.
@@ -102,13 +90,13 @@ struct SetupSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(found) { target in
-                    let working = ConnectionText.isWorking(target.tool, row(target))
-                    Toggle(isOn: binding(for: target)) {
-                        ChoiceLabel(tile: ToolTile(tool: target.tool, connected: working), title: target.title,
+                ForEach(found) { home in
+                    let working = ConnectionText.isWorking(row(home))
+                    Toggle(isOn: binding(for: home)) {
+                        ChoiceLabel(tile: ToolTile(tool: home.tool, connected: working), title: home.title,
                                     detail: working ? "Already connected"
-                                        : row(target)?.status == .outdated ? "Set up by an older Readback. This updates it and adds /speak and /read."
-                                        : row(target)?.status == .updateAvailable ? "A newer version of Readback's plugin is ready. This installs it."
+                                        : row(home)?.status == .outdated ? "Set up by an older Readback. This updates it and adds /speak and /read."
+                                        : row(home)?.status == .updateAvailable ? "A newer version of Readback's plugin is ready. This installs it."
                                         : nil)
                     }
                     .toggleStyle(.checkbox)
@@ -147,22 +135,22 @@ struct SetupSheet: View {
 
     private var steps: [Step] {
         var list: [Step] = []
-        for target in found where chosen.contains(target) {
-            let r = row(target)
-            let connected = r?.status == .connected
-            if target.tool == .codex {
-                let install: StepState = r?.busy == true ? .working : r?.error != nil ? .failed : connected ? .done : .waiting
-                list.append(Step(id: target.id + ".plugin", title: target.orca ? "Install the plugin in Orca's Codex" : "Install the Codex plugin",
-                                 detail: install == .failed ? (r?.error ?? "") : install == .done ? "Installed, with /speak and /read." : "Adds Readback's plugin to Codex.",
-                                 state: install))
-                let approve: StepState = install != .done ? .waiting : r?.approved == true ? .done : .yourTurn
-                list.append(Step(id: target.id + ".approve", title: target.orca ? "Approve Readback in Orca" : "Approve Readback in Codex",
-                                 detail: approveDetail(orca: target.orca, state: approve), state: approve))
+        for home in found where chosen.contains(home) {
+            let r = row(home)
+            let inPlace = r?.status == .connected || r?.status == .waitingForApproval
+            let state: StepState = r?.busy != nil ? .working : r?.error != nil ? .failed : inPlace ? .done : .waiting
+            if home.tool == .codex {
+                let orca = home == .orcaCodex
+                list.append(Step(id: home.id + ".plugin", title: orca ? "Install the plugin in Orca's Codex" : "Install the Codex plugin",
+                                 detail: state == .failed ? (r?.error ?? "") : state == .done ? "Installed, with /speak and /read." : "Adds Readback's plugin to Codex.",
+                                 state: state))
+                let approve: StepState = state != .done ? .waiting : r?.status == .connected ? .done : .yourTurn
+                list.append(Step(id: home.id + ".approve", title: orca ? "Approve Readback in Orca" : "Approve Readback in Codex",
+                                 detail: approveDetail(home, state: approve), state: approve))
             } else {
-                let state: StepState = r?.busy == true ? .working : r?.error != nil ? .failed : connected ? .done : .waiting
-                let done = target.tool == .claude ? "Connected. Start a new Claude Code session to get /speak and /read."
+                let done = home.tool == .claude ? "Connected. Start a new Claude Code session to get /speak and /read."
                     : "Connected. Restart OpenCode to load it."
-                list.append(Step(id: target.id, title: "Connect \(target.title)",
+                list.append(Step(id: home.id, title: "Connect \(home.title)",
                                  detail: state == .failed ? (r?.error ?? "") : state == .done ? done : "Connecting…", state: state))
             }
         }
@@ -170,13 +158,10 @@ struct SetupSheet: View {
         return list
     }
 
-    private func approveDetail(orca: Bool, state: StepState) -> String {
+    private func approveDetail(_ home: ToolHome, state: StepState) -> String {
         switch state {
-        case .done: return "Approved. \(orca ? "Orca's" : "Codex") replies reach Readback now."
-        case .yourTurn where orca:
-            return "Codex skips new hooks until you OK them. In an Orca Codex pane, type \(ConnectionText.command("/hooks")) and approve both Readback hooks. This updates by itself."
-        case .yourTurn:
-            return "Codex skips new hooks until you OK them. In the Codex app, quit and reopen it, then open Settings > Hooks and approve both Readback hooks. In a terminal, type \(ConnectionText.command("/hooks")). This updates by itself."
+        case .done: return "Approved. \(home == .orcaCodex ? "Orca's" : "Codex") replies reach Readback now."
+        case .yourTurn: return "Codex skips new hooks until you OK them. \(ConnectionText.howToApprove(home)) This updates by itself."
         default: return "After the plugin is in."
         }
     }
@@ -275,12 +260,12 @@ struct SetupSheet: View {
         let picked = found.filter(chosen.contains)
         var lines: [String] = []
         if picked.contains(where: { $0.tool == .claude }) {
-            lines.append("In a new Claude Code session, type \(ConnectionText.command("/speak on")), then ask anything. Readback reads the reply.")
+            lines.append("In a new Claude Code session, type /speak on, then ask anything. Readback reads the reply.")
         }
         let codex = picked.filter { $0.tool == .codex }
         if !codex.isEmpty {
-            let approved = codex.allSatisfy { row($0)?.approved == true }
-            lines.append("In a Codex chat, type \(ConnectionText.command("/speak on"))\(approved ? "" : " once you've approved Readback there"). \(ConnectionText.command("/read")) reads the last reply again.")
+            let approved = codex.allSatisfy { row($0)?.status == .connected }
+            lines.append("In a Codex chat, type /speak on\(approved ? "" : " once you've approved Readback there"). /read reads the last reply again.")
         }
         if !picked.isEmpty {
             lines.append("To hear every reply without asking, switch it on for a tool in Reading.")
@@ -288,15 +273,15 @@ struct SetupSheet: View {
         return lines
     }
 
-    private func binding(for target: Target) -> Binding<Bool> {
+    private func binding(for home: ToolHome) -> Binding<Bool> {
         // Already working shows ticked (and greyed out): it's connected, nothing to do.
-        Binding(get: { chosen.contains(target) || ConnectionText.isWorking(target.tool, row(target)) },
-                set: { on in if on { chosen.insert(target) } else { chosen.remove(target) } })
+        Binding(get: { chosen.contains(home) || ConnectionText.isWorking(row(home)) },
+                set: { on in if on { chosen.insert(home) } else { chosen.remove(home) } })
     }
 
     private func start() {
-        for target in found where chosen.contains(target) {
-            if target.orca { connections.connectOrca() } else { connections.connect(target.tool) }
+        for home in found where chosen.contains(home) {
+            connections.connect(home)
         }
         if voiceOffered {
             if getVoice {

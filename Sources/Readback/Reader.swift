@@ -26,6 +26,11 @@ final class Reader: ObservableObject {
     @Published private(set) var owner: String?
     /// The history entry being read, so the list can mark it.
     @Published private(set) var replyID: UUID?
+    /// While waiting for a sentence's audio ("preparing"): whether it plays or waits paused once
+    /// it's ready. The play button flips it, so a pause or a seek made while waiting holds.
+    @Published private(set) var startsPlaying = true
+    /// How far into the waited-for sentence it starts (0...1), from a seek.
+    private var pendingOffset = 0.0
 
     var isActive: Bool { phase != .idle }
     var isSpeaking: Bool { phase == .playing || phase == .preparing || phase == .paused }
@@ -66,7 +71,7 @@ final class Reader: ObservableObject {
     func start(_ request: SpeakRequest, replyID: UUID? = nil, cueSound: String? = nil) {
         let chunks = SpeechText.chunks(SpeechText.clean(request.text))
         guard !chunks.isEmpty else {
-            Log.info("nothing speakable in a reply from \(request.title)")
+            Log.info("nothing speakable in a reply from \(request.tool?.name ?? "a reply without a tool")")
             return
         }
         close()
@@ -78,6 +83,8 @@ final class Reader: ObservableObject {
         title = request.title
         current = 0
         progress = 0
+        pendingOffset = 0
+        startsPlaying = true
         phase = .preparing
         pendingCue = (cueSound?.isEmpty == false) ? cueSound : nil
 
@@ -131,17 +138,20 @@ final class Reader: ObservableObject {
         run = UUID()
         owner = nil
         replyID = nil
+        pendingOffset = 0
+        startsPlaying = true
         phase = .idle
     }
 
     /// Starts the first sentence: straight away, or, with a cue, the cue now and the voice a
     /// second later. Later sentences keep being made meanwhile.
     private func playAfterCue(_ index: Int, run: UUID) {
-        guard let name = pendingCue else { play(index); return }
+        // Paused before it began: no cue now, and none later in the middle of the reply.
+        guard let name = pendingCue, startsPlaying else { pendingCue = nil; startPending(index); return }
         pendingCue = nil
         guard let sound = NSSound(named: NSSound.Name(name)) else {
             Log.error("no macOS sound named \(name); reading without the cue")
-            play(index)
+            startPending(index)
             return
         }
         cue = sound
@@ -150,8 +160,16 @@ final class Reader: ObservableObject {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.cueLead))
             guard let self, self.run == run, self.phase == .preparing, self.current == index else { return }
-            self.play(index)
+            self.startPending(index)
         }
+    }
+
+    /// Starts the sentence that was waited for, where and how the person left it.
+    private func startPending(_ index: Int) {
+        let offset = pendingOffset, autoplay = startsPlaying
+        pendingOffset = 0
+        startsPlaying = true
+        play(index, from: offset, autoplay: autoplay)
     }
 
     // MARK: Controls
@@ -166,6 +184,8 @@ final class Reader: ObservableObject {
             phase = .playing
         case .finished:
             play(0)
+        case .preparing:
+            startsPlaying.toggle()
         default:
             break
         }
@@ -191,9 +211,10 @@ final class Reader: ObservableObject {
     /// (later chunks' lengths aren't known until they're made). Paused stays paused.
     func seek(to fraction: Double) {
         guard !chunks.isEmpty else { return }
-        let scaled = min(max(fraction, 0), 0.9999) * Double(chunks.count)
-        let index = Int(scaled)
-        play(index, from: scaled - Double(index), autoplay: phase != .paused)
+        let scaled = min(max(fraction, 0), 1) * Double(chunks.count)
+        let index = min(Int(scaled), chunks.count - 1)
+        let autoplay = phase == .preparing ? startsPlaying : phase != .paused
+        play(index, from: min(scaled - Double(index), 0.999), autoplay: autoplay)
     }
 
     func cycleSpeed() {
@@ -208,8 +229,10 @@ final class Reader: ObservableObject {
         if case .failed = phase { return }
         current = index
         guard let file = audio[index] else {
-            // Not generated yet: show "preparing" and the generation loop starts it.
+            // Not generated yet: wait ("preparing"); the generation loop starts it as asked.
             player.pause()
+            pendingOffset = offset
+            startsPlaying = autoplay
             phase = .preparing
             updateProgress()
             return
@@ -259,7 +282,7 @@ final class Reader: ObservableObject {
         if let item = player.currentItem, item.duration.isNumeric, item.duration.seconds > 0 {
             within = min(1, max(0, player.currentTime().seconds / item.duration.seconds))
         }
-        if phase == .preparing { within = 0 }
+        if phase == .preparing { within = pendingOffset }
         progress = (Double(current) + within) / Double(chunks.count)
     }
 }

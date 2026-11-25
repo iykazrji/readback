@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ReadbackCore
 
@@ -75,7 +76,7 @@ final class Runtime: ObservableObject {
         task = Task {
             defer { task = nil; current = nil }
             do {
-                guard let uv = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/uv") as URL?,
+                guard let uv = AppBundle(url: Bundle.main.bundleURL).uv as URL?,
                       FileManager.default.isExecutableFile(atPath: uv.path) else {
                     throw InstallError("this copy of Readback has no uv inside it")
                 }
@@ -89,7 +90,10 @@ final class Runtime: ObservableObject {
                 Log.info("voice engine updated")
                 then()
             } catch is CancellationError {
-                refresh()
+                readState()
+            } catch where Task.isCancelled {
+                // Cancelled mid-step: the step's own error (a killed process) isn't the news.
+                readState()
             } catch {
                 Log.error("voice engine update failed: \(error)")
                 updateFailed = true
@@ -100,12 +104,21 @@ final class Runtime: ObservableObject {
 
     /// Voices' Try again: an update again if that's what failed, else a fresh install.
     func retry(for prefs: Preferences) {
-        if updateFailed { update() } else { install(for: prefs) }
+        if removeFailed { startRemoving() } else if updateFailed { update() } else { install(for: prefs) }
     }
 
+    /// Leaves a failed removal showing (files may be half gone, so the disk alone would read as
+    /// "not installed"), until a retry of the removal works.
     func refresh() {
-        #if arch(arm64)
         if case .installing = state { return }
+        if removeFailed { return }
+        readState()
+    }
+
+    /// What's on disk, whatever the last state said. The engine counts as installed once its
+    /// packages are in (the receipt); whether a voice's model is downloaded shows apart from that.
+    private func readState() {
+        #if arch(arm64)
         let installed = FileManager.default.fileExists(atPath: paths.runtimeReceipt.path)
             && FileManager.default.isExecutableFile(atPath: paths.voiceServer.path)
         state = installed ? .installed : .notInstalled
@@ -124,8 +137,14 @@ final class Runtime: ObservableObject {
                                           lang: VoiceCatalog.lang(for: prefs.kokoroVoice, engine: .kokoro))
             size = EngineKind.kokoro.model?.size
         }
+        // Asked for from the macOS voice: switch to Kokoro once it's in, unless the person picked
+        // something else (the macOS voice again included) while it downloaded.
+        let startedOnSystem = prefs.engine == .system
+        var changedSince = false
+        let watch = prefs.$engine.dropFirst().sink { _ in changedSince = true }
         install(thenLoad: setup.model, voice: setup.voice, lang: setup.lang, modelSize: size ?? "a few hundred MB") {
-            if prefs.engine == .system { prefs.engine = .kokoro }
+            watch.cancel()
+            if startedOnSystem, !changedSince { prefs.engine = .kokoro }
         }
     }
 
@@ -136,9 +155,14 @@ final class Runtime: ObservableObject {
         fetchedBytes = 0
         state = .installing("Starting…")   // so anyone asking right away sees it's under way
         task = Task {
-            defer { task = nil; current = nil; meter?.cancel(); meter = nil; step = nil }
+            defer {
+                task = nil; current = nil; meter?.cancel(); meter = nil; step = nil
+                // A Cancel blocks this model's download only while the install it ended is going.
+                if let model = installingModel { Task { [server] in await server.allowDownload(of: model) } }
+                installingModel = nil
+            }
             do {
-                guard let uv = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/uv") as URL?,
+                guard let uv = AppBundle(url: Bundle.main.bundleURL).uv as URL?,
                       FileManager.default.isExecutableFile(atPath: uv.path) else {
                     throw InstallError("this copy of Readback has no uv inside it")
                 }
@@ -162,12 +186,19 @@ final class Runtime: ObservableObject {
                     Log.error("couldn't clear the install cache at \(cache.path): \(error)")
                 }
                 state = .installing("Downloading the voice (\(modelSize))…")
+                installingModel = model
+                await server.allowDownload(of: model)
+                try Task.checkCancellation()
                 try await server.ensureRunning(warming: model, voice: voice, lang: lang)
+                // The warm-up isn't tied to this task, so a Cancel during it lands here.
+                try Task.checkCancellation()
                 state = .installed
                 Log.info("voice engine installed and \(model) loaded")
                 onDone()
             } catch is CancellationError {
-                state = .notInstalled
+                readState()
+            } catch where Task.isCancelled {
+                readState()
             } catch {
                 Log.error("voice engine install failed: \(error)")
                 state = .failed("\(error)")
@@ -175,9 +206,15 @@ final class Runtime: ObservableObject {
         }
     }
 
+    /// The model the install is fetching, once it gets that far.
+    private var installingModel: String?
+
+    /// Ends whatever the install is doing: an installer step, or its own voice's download (not
+    /// one a reply started).
     func cancel() {
         current?.terminate()
         task?.cancel()
+        if let model = installingModel { Task { [server] in await server.cancelDownload(model, evenIfNotStarted: true) } }
     }
 
     /// Measures what the install has fetched, every second, off the main thread.
@@ -206,18 +243,37 @@ final class Runtime: ObservableObject {
         return total
     }
 
-    /// Stops the engine and deletes it. Downloaded models stay in the Hugging Face cache.
-    func remove() async {
-        await server.stop()
-        do {
-            if FileManager.default.fileExists(atPath: paths.runtime.path) {
-                try FileManager.default.removeItem(at: paths.runtime)
+    /// True while `remove` runs, so anyone asking (`readback engine`) hears "removing" until it's
+    /// gone, not the state from before.
+    @Published private(set) var removing = false
+
+    /// Stops the engine and deletes it, already "removing" when this returns. The one way in
+    /// (Voices' Remove and `readback engine remove`), so two can't overlap. Downloaded models
+    /// stay in the Hugging Face cache.
+    /// The last failure was a removal: Try again removes, and Voices says it's the removal.
+    @Published private(set) var removeFailed = false
+
+    func startRemoving() {
+        guard !removing else { return }
+        removing = true
+        removeFailed = false
+        Task {
+            await server.stop()
+            do {
+                if FileManager.default.fileExists(atPath: paths.runtime.path) {
+                    try FileManager.default.removeItem(at: paths.runtime)
+                }
+                Log.info("voice engine removed")
+                readState()
+            } catch {
+                // Part may be gone already (the receipt first), so say what failed rather than
+                // whatever the disk now looks like.
+                Log.error("couldn't remove the voice engine: \(error)")
+                removeFailed = true
+                state = .failed("Couldn't remove the voice engine: \(error.localizedDescription)")
             }
-            Log.info("voice engine removed")
-        } catch {
-            Log.error("couldn't remove the voice engine: \(error)")
+            removing = false
         }
-        refresh()
     }
 
     struct InstallError: Error, CustomStringConvertible {

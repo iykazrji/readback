@@ -40,6 +40,7 @@ final class PlayerPanelController {
             replies: app.replies,
             downloads: app.downloads,
             onClose: { [weak app] in app?.stopEverything() },
+            onCancelDownload: { [weak app] model in app?.cancelDownload(model) },
             onPlay: { [weak app] reply in app?.play(reply) },
             onHover: { [weak self] in self?.hoverChanged($0) },
             onDrag: { [weak self] translation, ended in self?.dragged(translation, ended: ended) }
@@ -55,6 +56,24 @@ final class PlayerPanelController {
         reader.$phase
             .removeDuplicates()
             .sink { [weak self] phase in self?.phaseChanged(phase) }
+            .store(in: &cancellables)
+        // Settings changed while the player is up take effect now, not at the next reply.
+        // (@Published sends the new value before the property changes, so it's used as sent.)
+        prefs.$escCloses
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] on in
+                guard let self, self.panel.isVisible, self.shouldBeShowing else { return }
+                if on { self.escape.register() } else { self.escape.unregister() }
+            }
+            .store(in: &cancellables)
+        prefs.$hideAfter
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] seconds in
+                guard let self, self.reader.phase == .finished else { return }
+                self.scheduleHide(after: seconds)
+            }
             .store(in: &cancellables)
         replies.$showingList
             .removeDuplicates()
@@ -215,10 +234,11 @@ final class PlayerPanelController {
         })
     }
 
-    private func scheduleHide() {
+    private func scheduleHide(after seconds: Double? = nil) {
         hideTimer?.invalidate()
-        guard prefs.hideAfter > 0 else { return }   // 0: stays until closed
-        hideTimer = Timer.scheduledTimer(withTimeInterval: prefs.hideAfter, repeats: false) { [weak self] _ in
+        let seconds = seconds ?? prefs.hideAfter
+        guard seconds > 0 else { return }   // 0: stays until closed
+        hideTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.reader.phase == .finished else { return }
                 // A hover that can't be real (panel off the active Space) must not keep it alive.

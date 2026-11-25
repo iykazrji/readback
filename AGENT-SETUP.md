@@ -54,7 +54,7 @@ See which tools are on this Mac:
 "$R" integrations
 ```
 
-Each line says `not installed`, `not connected` or `connected`. Connect only the tools that are installed and not yet connected.
+Each line says `not installed`, `not connected`, `partly connected` or `connected`. Connect the tools that are installed and not `connected` (connecting a `partly connected` one puts back what's missing).
 
 **Ask first:** "I'll connect Readback to <the tools>. That adds Readback's hooks to their settings (it keeps a backup of each file it changes, and Disconnect in Readback undoes it). OK?"
 
@@ -119,9 +119,11 @@ If the person asks you to remove Readback:
 
 ```sh
 "$R" disconnect claude; "$R" disconnect codex; "$R" disconnect opencode
-"$R" engine remove
-osascript -e 'quit app "Readback"'
-rm -rf /Applications/Readback.app
+"$R" engine remove &&
+  osascript -e 'quit app "Readback"' &&
+  rm -rf /Applications/Readback.app
 ```
+
+`engine remove` waits until the engine is gone. If it prints anything other than `not installed` (or `unsupported` on an Intel Mac), it exits with an error and the app stays: stop and tell the person what it printed.
 
 **Ask first** before also deleting its data: `~/Library/Application Support/Readback` (reply history and settings files), `~/Library/Logs/Readback`, and its preferences (`defaults delete local.readback`).

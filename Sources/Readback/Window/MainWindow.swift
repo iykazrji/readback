@@ -143,7 +143,7 @@ struct MainView: View {
                         openConnections: { navigation.section = .connections })
         case .voices:
             Page(title: "Voices") { VoicesPage(prefs: app.prefs, runtime: app.runtime, downloads: app.downloads,
-                                                  preview: app.preview, downloadNow: app.downloadVoice) }
+                                                  preview: app.preview, downloadNow: app.downloadVoice, download: app.download, cancelDownload: app.cancelDownload) }
         case .reading:
             Page(title: "Reading") { ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition) }
         case .connections:
@@ -245,12 +245,9 @@ private struct Sidebar: View {
     @ObservedObject var replies: Replies
     @ObservedObject var prefs: Preferences
     @Binding var selection: MainSection
-    /// The row under the pointer. The sweep highlight sits here, and goes back to the selected
-    /// row when the pointer leaves the list.
+    /// The row under the pointer, which gets a soft fill of its own.
     @State private var hovered: MainSection?
     @FocusState private var focused: Bool
-    @Namespace private var sweep
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let groups: [[MainSection]] = [[.home, .history], [.voices, .reading, .connections]]
     private static var order: [MainSection] { groups.flatMap { $0 } }
@@ -264,7 +261,6 @@ private struct Sidebar: View {
                 }
             }
             .onHover { inside in if !inside { hovered = nil } }
-            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.84), value: highlighted)
             .focusable()
             .focused($focused)
             .focusEffectDisabled()
@@ -283,7 +279,7 @@ private struct Sidebar: View {
             Spacer(minLength: 12)
 
             VStack(spacing: 8) {
-                NowPlayingCard(app: app, reader: reader, prefs: prefs, showVoices: { selection = .voices })
+                NowPlayingCard(app: app, reader: reader, prefs: prefs, runtime: app.runtime, showVoices: { selection = .voices })
                 Button {
                     selection = .about
                 } label: {
@@ -304,11 +300,6 @@ private struct Sidebar: View {
         .padding(.bottom, 10)
         .frame(maxHeight: .infinity)
         .background(WindowColors.sidebar.ignoresSafeArea())
-    }
-
-    private var highlighted: MainSection? {
-        if let hovered { return hovered }
-        return Self.order.contains(selection) ? selection : nil
     }
 
     private func row(_ section: MainSection) -> some View {
@@ -335,26 +326,27 @@ private struct Sidebar: View {
         }
         .buttonStyle(SidebarRowStyle())
         .background {
-            if highlighted == section {
-                SweepHighlight(onSelection: section == selection)
-                    .matchedGeometryEffect(id: "sweep", in: sweep)
+            if isSelected || hovered == section {
+                RowHighlight(selected: isSelected)
             }
         }
-        .onHover { inside in if inside { hovered = section } }
+        .onHover { inside in
+            if inside { hovered = section } else if hovered == section { hovered = nil }
+        }
         .accessibilityLabel(section.title)
         .accessibilityValue(section == .history && replies.waitingCount > 0 ? "\(replies.waitingCount) waiting" : "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
-/// The highlight that sweeps to the row under the pointer: a solid fill a step lighter than the
-/// sidebar, a little stronger while it rests on the selected row.
-private struct SweepHighlight: View {
-    let onSelection: Bool
+/// A row's fill: the selected row's, or a softer one under the pointer. No movement between
+/// rows (the moving "sweep" highlight it replaced felt glitchy, 2026-11-25).
+private struct RowHighlight: View {
+    let selected: Bool
 
     var body: some View {
         RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
-            .fill(onSelection ? WindowColors.rowSelected : WindowColors.rowHighlight)
+            .fill(selected ? WindowColors.rowSelected : WindowColors.rowHighlight)
     }
 }
 
@@ -389,10 +381,13 @@ private struct NowPlayingCard: View {
     let app: AppDelegate
     @ObservedObject var reader: Reader
     @ObservedObject var prefs: Preferences
+    /// Until the on-device engine is in, a neural choice is read with the macOS voice.
+    @ObservedObject var runtime: Runtime
     let showVoices: () -> Void
 
     var body: some View {
-        if reader.isActive {
+        // Only while it's being read: a finished or failed reply sitting in the player isn't "Reading".
+        if reader.isSpeaking {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Image(systemName: "waveform")
@@ -434,13 +429,17 @@ private struct NowPlayingCard: View {
     private static let height: CGFloat = 72
 
     private var voice: (engine: String, name: String) {
+        // The voice picked, and what's actually heard until its engine is in.
+        if prefs.engine.needsRuntime, !runtime.isInstalled {
+            return (prefs.engine.title.components(separatedBy: " (").first ?? prefs.engine.title, "macOS voice for now")
+        }
         switch prefs.engine {
         case .system: return ("macOS voice", prefs.systemVoice.isEmpty ? "System default" : (SystemVoice.voices().first { $0.identifier == prefs.systemVoice }?.name ?? ""))
         case .kokoro: return ("Kokoro", VoiceCatalog.kokoroVoice(prefs.kokoroVoice)?.name ?? prefs.kokoroVoice)
         case .melo: return ("MeloTTS", VoiceCatalog.meloVoices.first { $0.id == prefs.meloVoice }?.name ?? prefs.meloVoice)
         case .soprano: return ("Soprano", "")
         case .qwen3: return ("Qwen3-TTS", VoiceCatalog.qwen3Voices.first { $0.id == prefs.qwen3Voice }?.name ?? prefs.qwen3Voice)
-        case .custom: return ("Custom model", prefs.customModel)
+        case .custom: return ("Custom model", prefs.voiceSetup.model)
         }
     }
 }

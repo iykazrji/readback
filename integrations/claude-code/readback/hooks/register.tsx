@@ -9,7 +9,8 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 //
 // Readback.app does the reading; this mod talks to it on 127.0.0.1:8908 and starts it when it
 // isn't running. The Stop hook Readback adds to settings.json hands each finished reply to the
-// app, which reads it when this session (or "every Claude Code reply") is switched on.
+// app, which reads it when this session (or "every Claude Code reply") is switched on. /speak and
+// /read go to the app's /command, which also answers Codex's, so both tools say the same thing.
 // While this session's reply plays, the band above the prompt shows "Reading aloud · 0: Stop".
 
 const BASE = 'http://127.0.0.1:8908'
@@ -90,13 +91,9 @@ export const register: Register = on => {
     const arg = e.args.trim().toLowerCase()
     if (arg !== '' && arg !== 'on' && arg !== 'off') return { text: 'Use /speak on or /speak off.' }
     if (!(await reachApp($))) return { text: NOT_RUNNING }
-    const answer = await call($, '/session', arg === '' ? { session: me } : { session: me, enabled: arg === 'on' })
-    if (!answer) return { text: "Readback didn't answer. See ~/Library/Logs/Readback." }
-    const isOn = answer.enabled === true
-    if (arg === '') {
-      return { text: `Read-aloud is ${isOn ? 'on' : 'off'} in this session. /speak on or /speak off to change it, /read to hear the last reply.` }
-    }
-    return { text: isOn ? 'Read-aloud is on for this session.' : 'Read-aloud is off for this session.' }
+    const asked = arg === '' ? {} : { enabled: arg === 'on' }
+    const answer = await call($, '/command', { command: 'speak', tool: 'claude', session: me, ...asked })
+    return { text: typeof answer?.text === 'string' ? answer.text : "Readback didn't answer. See ~/Library/Logs/Readback." }
   })
 
   on('command.run', { command: 'read' }, async $ => {
@@ -105,8 +102,9 @@ export const register: Register = on => {
     const last = messages.findLast(m => m.role === 'assistant' && m.text.trim() !== '')
     if (!last) return { text: 'There is no reply to read yet.' }
     if (!(await reachApp($))) return { text: NOT_RUNNING }
-    const answer = await call($, '/speak', { text: last.text, source: 'claude', session: me, cwd, autoplay: true })
-    return { text: answer ? 'Reading the last reply.' : "Readback didn't take it. See ~/Library/Logs/Readback." }
+    // The text goes too: if Readback wasn't running when the reply finished, it never got it.
+    const answer = await call($, '/command', { command: 'read', tool: 'claude', session: me, text: last.text, cwd })
+    return { text: typeof answer?.text === 'string' ? answer.text : "Readback didn't take it. See ~/Library/Logs/Readback." }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -8,7 +8,7 @@ enum Radius {
     static let card: CGFloat = 16
     /// The sidebar's bottom cards, which sit 10 pt in from the sidebar's edge.
     static let sidebarCard: CGFloat = 12
-    /// Sidebar rows and their sweep highlight.
+    /// Sidebar rows and their hover and selected fills.
     static let row: CGFloat = 9
     /// Small controls inside a card (a 24 pt button 8 pt in from a card's corner).
     static let control: CGFloat = 8

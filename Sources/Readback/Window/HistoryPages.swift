@@ -29,7 +29,7 @@ struct HomePage: View {
                     } else {
                         VStack(spacing: 10) {
                             ForEach(replies.all.prefix(5)) { reply in
-                                ReplyCard(app: app, reply: reply, isPlaying: reader.isActive && reader.replyID == reply.id)
+                                ReplyCard(app: app, reply: reply, isPlaying: reader.isSpeaking && reader.replyID == reply.id)
                             }
                         }
                         .padding(.top, -12)   // the cards belong to the heading above them
@@ -58,8 +58,9 @@ struct HomePage: View {
         .surface()
     }
 
+    /// Tools, not homes: Codex and Codex in Orca are one tool.
     private var connectedCount: Int {
-        connections.rows.values.filter { $0.status == .connected }.count
+        Set(connections.rows.filter { ConnectionText.isWorking($0.value) }.map(\.key.tool)).count
     }
 
     /// An estimate from the words read at about 165 a minute, so it says "~".
@@ -150,6 +151,7 @@ struct HistoryPage: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
+                if let saveError = replies.saveError { unsavedBar(saveError) }
                 if !cleared.isEmpty { undoBar }
                 if replies.all.isEmpty {
                     EmptyReplies(openConnections: openConnections)
@@ -169,7 +171,7 @@ struct HistoryPage: View {
                         .padding(.bottom, 2)
                         .accessibilityAddTraits(.isHeader)
                     ForEach(group.replies) { reply in
-                        ReplyCard(app: app, reply: reply, isPlaying: reader.isActive && reader.replyID == reply.id)
+                        ReplyCard(app: app, reply: reply, isPlaying: reader.isSpeaking && reader.replyID == reply.id)
                     }
                 }
             }
@@ -194,6 +196,23 @@ struct HistoryPage: View {
         })
         // One scroll view for every state, so the page keeps its shape with replies, none, or
         // none that match.
+    }
+
+    private func unsavedBar(_ reason: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            Text("Readback couldn't save the history: \(reason). Changes shown here are lost when it quits. The full message is in Readback's log (About > Logs).")
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .font(.system(size: 13))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .surface(radius: Radius.sidebarCard)
+        .accessibilityElement(children: .combine)
     }
 
     private var undoBar: some View {

@@ -7,9 +7,12 @@ What to send someone: the latest release on GitHub, or `build/Readback.zip` and 
 ## Layout
 
 ```
-Sources/ReadbackCore     logic with no UI: markdown → speakable text, sentence chunks, the HTTP
-                         parser, the voice catalog, order-keeping JSON, the integration edits, and
-                         the Codex plugin (Codex.swift: its files, /speak and /read parsing,
+Sources/ReadbackCore     logic with no UI: markdown → speakable text, sentence chunks, the control
+                         protocol (ControlProtocol.swift: routes, request bodies, the /speak and /read
+                         answers), the reply queue (ReplyQueue.swift), hook payloads, the bundle
+                         layout (AppBundle.swift), the voice catalog, order-keeping JSON, the
+                         integration edits (one ToolHome per tool folder, Orca's Codex included),
+                         and the Codex plugin (Codex.swift: its files, /speak and /read parsing,
                          reading approvals from config.toml, finding the codex command)
 Sources/Readback         the app: menu bar, floating player (with the reply list), the main
                          window (Window/: Home, History, Voices, Reading, Connections, About),
@@ -27,10 +30,11 @@ docs/README-for-friends.md
 ## How a reply gets read
 
 1. The tool's Stop hook runs `readback hook <tool>` with the hook's JSON on stdin. OpenCode has no hooks file, so a plugin does the same on `session.idle`.
-2. The CLI posts the reply to the app (`POST /speak` with `session` and `source`), starting the app if it isn't running.
-3. Every reply goes into the history (`~/Library/Application Support/Readback/history.json`, last 50). The app reads it if that session switched read-aloud on (`/speak on` → `POST /session`) or that tool's "read every reply" switch is on. If something is already playing it waits its turn (or cuts in, per Reading → "Switch to it"); when a reply ends, the oldest waiting one plays. Close/Esc means quiet: what was waiting stays in History unplayed. A tool's "new message" hook drops only that session's reading and waiting replies.
+2. The CLI posts the reply to the app (`POST /speak` with `session` and `source`). It starts the app only if the reply is meant to be read, checking the same switches the app does (`ReadingSwitches`).
+3. Every reply goes into the history (`~/Library/Application Support/Readback/history.json`, last 50). The app reads it if that session switched read-aloud on (`/speak on`) or that tool's "read every reply" switch is on. `ReplyQueue` in Core makes every one of these decisions; the app carries out what it returns. If something is already playing it waits its turn (or cuts in, per Reading → "Switch to it"); when a reply ends, the oldest waiting one plays. Close/Esc means quiet: what was waiting stays in History unplayed. A tool's "new message" hook drops only that session's reading and waiting replies.
 4. The reply is cleaned (code blocks and tables become a short spoken note), split into sentence chunks, and voiced chunk by chunk. Playback starts on the first chunk while the rest are made.
 5. The tool's UserPromptSubmit hook runs `readback stop`, which stops the reading only if it came from the same session. Codex's runs `readback prompt codex` instead, which does the same for an ordinary prompt and answers `/speak on|off` and `/read` itself, blocking the prompt so the model never sees it.
+6. `/speak` and `/read` from either tool go to `POST /command`, and the app writes the answer (`CommandAnswer`), so Claude Code and Codex say the same thing. Claude Code's `/read` sends the reply's text along, for when Readback wasn't running when the reply finished.
 
 ### Codex
 
@@ -47,12 +51,12 @@ The on-device engine lives in `~/Library/Application Support/Readback/runtime`: 
 ## Build and test
 
 ```
-swift test                                   # core logic: 60 XCTest + 38 Swift Testing
+swift test                                   # core logic
 claude plugin test integrations/claude-code/readback
 ./scripts/build-app.sh                       # needs uv on PATH (it's copied into the app)
 ```
 
-`READBACK_ROUNDTRIP_FILES="a.json:b.json" swift test --filter RoundTrip` checks, read-only, that real config files come back byte for byte through the JSON editor.
+The JSON editor keeps every key, its order, numbers and escapes as they were, and writes the 2-space layout Claude Code and Codex use. A file Readback has nothing to change in is never rewritten. A file in another layout (compact, tabs) is rewritten in that 2-space layout the first time Readback edits it. `READBACK_ROUNDTRIP_FILES="a.json:b.json" swift test --filter RoundTrip` checks, read-only, that real config files in that layout come back byte for byte.
 
 ## Signing
 

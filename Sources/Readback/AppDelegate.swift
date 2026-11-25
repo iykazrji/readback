@@ -57,18 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         connections.refreshPlugin()
         Log.info("Readback \(Bundle.main.version) started")
 
-        // When a reply finishes on its own, the next one waiting plays.
         reader.$phase
             .removeDuplicates()
-            .sink { [weak self] phase in if phase == .finished { self?.playNextWaiting(after: 0.8) } }
-            .store(in: &cancellables)
-
-        // The idle clock runs while nothing is reading, and stops while something is.
-        reader.$phase
-            .removeDuplicates()
-            .sink { [weak self] phase in
-                if phase == .idle || phase == .finished { self?.scheduleIdleStop() } else { self?.idleStop?.cancel() }
-            }
+            .sink { [weak self] phase in self?.readerMoved(to: phase) }
             .store(in: &cancellables)
 
         // An engine installed before a new package was added (MeloTTS's) gets it now; the
@@ -109,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func clearQuarantine() {
         let bundle = Bundle.main.bundleURL.path
         guard getxattr(bundle, "com.apple.quarantine", nil, 0, 0, 0) >= 0
-            || getxattr(bundle + "/Contents/Helpers/readback", "com.apple.quarantine", nil, 0, 0, 0) >= 0 else { return }
+            || getxattr(AppBundle(url: Bundle.main.bundleURL).cli.path, "com.apple.quarantine", nil, 0, 0, 0) >= 0 else { return }
         let xattr = Process()
         xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
         xattr.arguments = ["-dr", "com.apple.quarantine", bundle]
@@ -209,8 +200,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard runtime.isInstalled, setup.engine.needsRuntime, !setup.model.isEmpty else { return }
         Task { [voiceServer] in
             do { try await voiceServer.ensureRunning(warming: setup.model, voice: setup.voice, lang: setup.lang) }
+            catch SpeechError.downloadCancelled { }   // the person stopped it; already logged
             catch { Log.error("downloading the voice from Voices failed: \(error)") }
         }
+    }
+
+    /// Downloads a voice's model now, without switching to it or loading it (Voices' Download
+    /// buttons). Progress and any failure show through `downloads`.
+    func download(_ model: String) {
+        guard runtime.isInstalled else { return }
+        Task { [voiceServer] in
+            do { try await voiceServer.download(model) }
+            catch SpeechError.downloadCancelled { }   // the person stopped it; already logged
+            catch { Log.error("downloading \(model) from Voices failed: \(error)") }
+        }
+    }
+
+    /// Stops a model's download and deletes what it had fetched.
+    func cancelDownload(_ model: String) {
+        Task { [voiceServer] in await voiceServer.cancelDownload(model) }
     }
 
     /// A sample of the current voice. Not a reply, so it stays out of the history.
@@ -221,156 +229,192 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Replies
 
-    /// Plays a reply from the history now, whatever is playing. `cue`: it started by itself
-    /// (auto-read, the next in the queue), so the cue sound gives a second's warning first.
-    func play(_ reply: Reply, cue: Bool = false) {
-        advanceTask?.cancel()
-        replies.mark(reply.id, .played)
-        replies.countPlay(of: reply)
-        reader.start(reply.request, replyID: reply.id, cueSound: cue ? prefs.cueSound : nil)
+    /// What the reader is on, as the queue sees it.
+    private var reading: ReplyQueue.Reading? {
+        reader.isActive ? .init(replyID: reader.replyID, session: reader.owner, isSpeaking: reader.isSpeaking) : nil
     }
 
-    /// Close, Esc or the menu's Stop: the person wants quiet, so nothing waiting plays after it.
-    /// What was waiting stays in the history.
+    /// Whether this reading's audio has been heard yet: it counts once in the all-time numbers,
+    /// and a failure after that doesn't make the reply unheard. Reset for every new reading.
+    private var heardThisReading = false
+
+    /// A reading ending, by finishing or failing, hands over to the next waiting reply, and the
+    /// engine's idle clock runs whenever nothing is being voiced. `phase` is the new one:
+    /// @Published sends it before `reader.phase` changes, so decisions use it, not the reader's.
+    private func readerMoved(to phase: Reader.Phase) {
+        switch phase {
+        case .playing:
+            if !heardThisReading, reader.replyID != nil {
+                heardThisReading = true
+                replies.countPlay(spoken: reader.chunks.joined(separator: " "))
+            }
+        case .finished:
+            playNextWaiting(after: 0.8)
+        case .failed:
+            if let id = reader.replyID, !heardThisReading { _ = replies.decide { $0.readingFailed(id); return .nothing } }
+            playNextWaiting(after: 0.8)
+        case .idle, .preparing, .paused:
+            break
+        }
+        switch phase {
+        case .preparing, .playing, .paused: idleStop?.cancel()
+        case .idle, .finished, .failed: scheduleIdleStop()
+        }
+    }
+
+    private func carryOut(_ step: ReplyQueue.Step) {
+        switch step {
+        case .nothing:
+            break
+        case .play(let reply, let cue):
+            advanceTask?.cancel()
+            heardThisReading = false
+            reader.start(reply.request, replyID: reply.id, cueSound: cue ? prefs.cueSound : nil)
+        case .stopThenNext:
+            reader.close()
+            playNextWaiting(after: 0.3)
+        case .quiet:
+            advanceTask?.cancel()
+            replies.showingList = false
+            reader.close()
+        }
+    }
+
+    /// Plays a reply from the history now, whatever is playing.
+    func play(_ reply: Reply) {
+        carryOut(replies.decide { $0.play(reply.id) })
+    }
+
+    /// Close, Esc or the menu's Stop.
     func stopEverything() {
-        advanceTask?.cancel()
-        for reply in replies.all where reply.state == .waiting { replies.mark(reply.id, .kept) }
-        replies.showingList = false
-        reader.close()
+        carryOut(replies.decide { $0.stopAll() })
     }
 
     private func playNextWaiting(after delay: Double) {
         advanceTask?.cancel()
         advanceTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
-            guard let self, !Task.isCancelled, !self.reader.isSpeaking, let next = self.replies.nextWaiting else { return }
-            self.play(next, cue: true)
-        }
-    }
-
-    private func speak(_ request: SpeakRequest) {
-        let sessionOn = request.session.map(prefs.isSessionOn) ?? false
-        let toolOn = request.tool.map { prefs.autoRead[$0] ?? false } ?? false
-        let explicit = request.autoplay == true
-        let wanted = request.autoplay ?? (sessionOn || toolOn)
-
-        // /read of a reply the Stop hook already handed over: the same entry, not a copy.
-        // Only for that explicit ask: a hook sending the same words again ("Done.") is a new reply.
-        let reply: Reply
-        if explicit, let existing = replies.all.prefix(20).first(where: { $0.text == request.text && $0.session == request.session }) {
-            reply = existing
-        } else {
-            reply = Reply(request, state: wanted ? .waiting : .kept)
-            replies.add(reply)
-        }
-        guard wanted else { return }
-        if explicit || !reader.isSpeaking || prefs.switchToNewReplies {
-            // /read and `readback say` were asked for just now: no warning needed.
-            play(reply, cue: !explicit)
-        }
-    }
-
-    /// A tool's "new message" hook: stop that session's reading and drop what it had waiting
-    /// (the person moved on there). Other sessions' replies carry on.
-    private func stopSession(_ session: String?) {
-        guard let session else { stopEverything(); return }
-        for reply in replies.all where reply.state == .waiting && reply.session == session {
-            replies.mark(reply.id, .kept)
-        }
-        if reader.owner == nil || reader.owner == session {
-            reader.close()
-            playNextWaiting(after: 0.3)
+            guard let self, !Task.isCancelled else { return }
+            self.carryOut(self.replies.decide { [reading = self.reading] in $0.playNext(reading: reading) })
         }
     }
 
     // MARK: Control server
 
     private func startControlServer() {
-        let server = ControlServer(handlers: .init(
-            speak: { [unowned self] request in self.speak(request) },
-            stop: { [unowned self] session in self.stopSession(session) },
-            replay: { [unowned self] session in
-                guard let newest = self.replies.all.first(where: { $0.session == session }) else { return false }
-                self.play(newest)
-                return true
-            },
-            session: { [unowned self] id, enabled in
-                if let enabled {
-                    self.prefs.setSession(id, enabled)
-                    if !enabled { self.stopSession(id) }
-                }
-                return self.prefs.isSessionOn(id)
-            },
-            auto: { [unowned self] tool, enabled in
-                if let enabled { self.prefs.setAutoRead(tool, enabled) }
-                return self.prefs.autoRead[tool] ?? false
-            },
-            voice: { [unowned self] request in self.setVoice(request) },
-            engine: { [unowned self] action in
-                switch action {
-                case "install":
-                    if self.runtime.state == .notInstalled || { if case .failed = self.runtime.state { return true }; return false }() {
-                        self.runtime.install(for: self.prefs)
-                    }
-                case "remove":
-                    if self.runtime.state == .installed { Task { await self.runtime.remove() } }
-                default: break
-                }
-                return self.runtimeState
-            },
-            status: { [unowned self] in self.status() }
-        ))
+        let server = ControlServer { [unowned self] request in self.handle(request) }
         do {
             try server.start()
         } catch {
-            Log.error("couldn't start the control server on port \(ControlServer.port): \(error)")
+            Log.error("couldn't start the control server on port \(server.port): \(error)")
         }
         self.server = server
     }
 
-    /// `readback voice …`: the same choices as the Voices page, from the terminal.
-    private func setVoice(_ request: ControlServer.VoiceRequest) -> Result<[String: Any], ControlServer.VoiceRequest.Invalid> {
+    private func handle(_ request: ControlRequest) -> Data {
+        switch request {
+        case .health:
+            return HTTPResponse.json(200, health)
+        case .speak(let speak):
+            if !SpeechText.isSpeakable(speak.text) {
+                Log.info("a reply from \(speak.tool?.name ?? "a reply without a tool") had nothing to read; kept, not played")
+            }
+            let switchedOn = prefs.switches.wantsReading(tool: speak.tool, session: speak.session)
+            carryOut(replies.decide { [reading] in $0.received(speak, switchedOn: switchedOn, reading: reading, cutIn: prefs.switchToNewReplies) })
+            return HTTPResponse.json(202, ["accepted": true])
+        case .stop(let session, let newTurn):
+            if let session {
+                carryOut(replies.decide { [reading] in $0.stop(session: session, reading: reading, newTurn: newTurn) })
+            } else {
+                stopEverything()
+            }
+            return HTTPResponse.json(200, ["ok": true])
+        case .command(let command):
+            return HTTPResponse.json(200, CommandReply(text: answer(command)))
+        case .session(let body):
+            if let enabled = body.enabled { setSession(body.session, enabled) }
+            return HTTPResponse.json(200, ["session": body.session, "enabled": prefs.isSessionOn(body.session)])
+        case .auto(let body):
+            if let enabled = body.enabled { prefs.setReadsEveryReply(body.tool, enabled) }
+            return HTTPResponse.json(200, ["tool": body.tool.rawValue, "enabled": prefs.readsEveryReply(body.tool)])
+        case .voice(let body):
+            switch setVoice(body) {
+            case .success(let current): return HTTPResponse.json(200, current)
+            case .failure(let invalid): return HTTPResponse.json(400, ["error": invalid.message])
+            }
+        case .engine(let action):
+            switch action {
+            case .install?:
+                if runtime.state == .notInstalled || { if case .failed = runtime.state { return true }; return false }() {
+                    runtime.install(for: prefs)
+                }
+            case .remove?:
+                if runtime.state == .installed || runtime.removeFailed { runtime.startRemoving() }
+            case nil:
+                break
+            }
+            return HTTPResponse.json(200, ["runtime": runtimeState])
+        }
+    }
+
+    /// Switching a session off also stops what it's reading.
+    private func setSession(_ id: String, _ on: Bool) {
+        prefs.setSession(id, on)
+        if !on { carryOut(replies.decide { [reading] in $0.stop(session: id, reading: reading) }) }
+    }
+
+    /// /speak and /read typed in a tool: Claude Code's mod and Codex's prompt hook both show this.
+    private func answer(_ command: CommandRequest) -> String {
+        switch command.command {
+        case .speak:
+            let session = command.session ?? ""
+            if let enabled = command.enabled { setSession(session, enabled) }
+            return CommandAnswer.speak(asked: command.enabled, isOn: prefs.isSessionOn(session),
+                                       everyReply: prefs.readsEveryReply(command.tool), tool: command.tool)
+        case .read:
+            let asSent = command.text.map { SpeakRequest(text: $0, source: command.tool.rawValue, cwd: command.cwd, session: command.session) }
+            let step = replies.decide { $0.readLast(session: command.session, asSent: asSent) }
+            carryOut(step)
+            if case .play = step { return CommandAnswer.read(played: true, tool: command.tool) }
+            return CommandAnswer.read(played: false, tool: command.tool)
+        }
+    }
+
+    struct InvalidVoice: Error { let message: String }
+
+    /// `readback voice …`: the same choices as the Voices page, from the terminal. Everything is
+    /// checked first, so a request that fails changes nothing.
+    private func setVoice(_ request: VoiceRequest) -> Result<[String: Any], InvalidVoice> {
+        var engine = prefs.engine
         if let name = request.engine {
-            guard let engine = EngineKind(rawValue: name.lowercased()) else {
-                return .failure(.init(message: "unknown engine \(name): use system, kokoro, melo, soprano, qwen3 or custom"))
+            guard let picked = EngineKind(rawValue: name.lowercased()) else {
+                return .failure(.init(message: "unknown engine \(name): use \(EngineKind.allCases.map(\.rawValue).joined(separator: ", "))"))
             }
-            prefs.engine = engine
+            engine = picked
         }
-        if let voice = request.voice {
-            switch prefs.engine {
-            case .system:
-                guard voice.isEmpty || SystemVoice.voices().contains(where: { $0.identifier == voice }) else {
-                    return .failure(.init(message: "no macOS voice with id \(voice)"))
-                }
-                prefs.systemVoice = voice
-            case .kokoro:
-                guard VoiceCatalog.kokoroVoice(voice) != nil else {
-                    return .failure(.init(message: "Kokoro has no voice \(voice): try af_heart, am_michael, bf_emma"))
-                }
-                prefs.kokoroVoice = voice
-            case .melo:
-                guard VoiceCatalog.meloVoices.contains(where: { $0.id == voice }) else {
-                    return .failure(.init(message: "MeloTTS has no accent \(voice): try EN-US, EN-BR, EN-AU, EN_INDIA or EN-Default"))
-                }
-                prefs.meloVoice = voice
-            case .soprano:
-                return .failure(.init(message: "Soprano has one voice; there's nothing to pick"))
-            case .qwen3:
-                guard VoiceCatalog.qwen3Voices.contains(where: { $0.id == voice }) else {
-                    return .failure(.init(message: "Qwen3-TTS has no speaker \(voice): try ryan or aiden"))
-                }
-                prefs.qwen3Voice = voice
-            case .custom:
-                prefs.customVoice = voice
+        let voice = request.voice.map { $0.trimmingCharacters(in: .whitespaces) }
+        if let voice, let problem = VoiceCatalog.problem(voice: voice, for: engine,
+                                                         systemVoiceExists: { id in SystemVoice.voices().contains { $0.identifier == id } }) {
+            return .failure(.init(message: problem))
+        }
+        prefs.engine = engine
+        if let voice {
+            switch engine {
+            case .system: prefs.systemVoice = voice
+            case .kokoro: prefs.kokoroVoice = voice
+            case .melo: prefs.meloVoice = voice
+            case .qwen3: prefs.qwen3Voice = voice
+            case .custom: prefs.customVoice = voice
+            case .soprano: break
             }
         }
-        if let model = request.model { prefs.customModel = model }
-        if let lang = request.lang { prefs.customLang = lang }
+        if let model = request.model { prefs.customModel = model.trimmingCharacters(in: .whitespaces) }
+        if let lang = request.lang { prefs.customLang = lang.trimmingCharacters(in: .whitespaces) }
         let setup = prefs.voiceSetup
         return .success(["engine": setup.engine.rawValue, "model": setup.model, "voice": setup.voice, "lang": setup.lang])
     }
 
-    private func status() -> [String: Any] {
+    private var health: Health {
         let phase: String
         switch reader.phase {
         case .idle: phase = "idle"
@@ -380,12 +424,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .finished: phase = "finished"
         case .failed: phase = "failed"
         }
-        let auto = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0.rawValue, prefs.autoRead[$0] ?? false) })
-        return ["speaking": reader.isSpeaking, "phase": phase, "session": reader.owner ?? NSNull(),
-                "current": reader.current, "count": reader.chunks.count, "speed": reader.speed,
-                "waiting": replies.waitingCount, "history": replies.all.count,
-                "auto": auto, "engine": prefs.engine.rawValue, "runtime": runtimeState, "version": Bundle.main.version,
-                "menuBarIcon": menuBarIconState]
+        return Health(speaking: reader.isSpeaking, phase: phase, session: reader.owner,
+                      current: reader.current, count: reader.chunks.count, speed: reader.speed,
+                      waiting: replies.waitingCount, history: replies.all.count,
+                      auto: Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0.rawValue, prefs.readsEveryReply($0)) }),
+                      engine: prefs.engine.rawValue, runtime: runtimeState, version: Bundle.main.version,
+                      menuBarIcon: menuBarIconState)
     }
 
     /// Whether the menu bar icon can be seen: a MacBook notch, a full-screen app or the system's
@@ -401,6 +445,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     var runtimeState: String {
+        if runtime.removing { return "removing" }
         switch runtime.state {
         case .unsupported: return "unsupported"
         case .notInstalled: return "not installed"

@@ -21,8 +21,8 @@ public enum CodexPlugin {
     /// The marketplace folder Readback writes, relative to its root, with the CLI path baked into
     /// the hooks. Codex installs the plugin from here into its own cache.
     public static func files(cli: String) -> [(path: String, contents: String)] {
-        let stop = JSONValue.quote(Integrations.command(cli: cli, "hook codex"))
-        let prompt = JSONValue.quote(Integrations.command(cli: cli, "prompt codex"))
+        let stop = JSONValue.quote(hooks["Stop"]!.line(cli: cli))
+        let prompt = JSONValue.quote(hooks["UserPromptSubmit"]!.line(cli: cli))
         return [
             (".agents/plugins/marketplace.json", """
             {
@@ -148,6 +148,9 @@ public enum CodexPlugin {
         return approved
     }
 
+    /// The two hooks in the plugin's hooks.json, by event.
+    public static let hooks: [String: HookCommand] = ["Stop": .replyFinished(.codex), "UserPromptSubmit": .codexPrompt]
+
     /// The two events Readback's hooks run on, as config.toml names them.
     public static let hookEvents: Set<String> = ["stop", "user_prompt_submit"]
 
@@ -188,7 +191,8 @@ public enum PromptCommand: Equatable {
         let words = text.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         guard var word = words.first, word.first == "/" || word.first == "$" else { return nil }
         word.removeFirst()
-        if word.hasPrefix("readback:") { word.removeFirst("readback:".count) }
+        let plugin = CodexPlugin.name + ":"
+        if word.hasPrefix(plugin) { word.removeFirst(plugin.count) }
         let rest = Array(words.dropFirst())
         switch (word, rest) {
         case ("speak", []): self = .speak(nil)
@@ -198,6 +202,31 @@ public enum PromptCommand: Equatable {
         default: return nil
         }
     }
+}
+
+extension PromptCommand {
+    /// For a prompt that starts like /speak or /read but isn't one (a new way Codex writes the
+    /// command, say), its shape for the log. nil for a command or an ordinary prompt. Nothing the
+    /// person typed is kept.
+    public static func nearMiss(_ prompt: String) -> String? {
+        guard PromptCommand(prompt: prompt) == nil else { return nil }
+        let words = prompt.trimmingCharacters(in: .whitespacesAndNewlines).split(whereSeparator: \.isWhitespace)
+        guard let word = words.first, let first = word.first, "/$[".contains(first) else { return nil }
+        let lower = word.lowercased()
+        let mentions = lower.contains("speak") ? "speak" : lower.contains("read") ? "read" : nil
+        guard let mentions else { return nil }
+        // Only the shape: which sign it starts with, which command it mentions, and how long it is.
+        let rest = words.count - 1
+        return "a \(first) word with \(mentions) in it (\(word.count) characters), then \(rest) \(rest == 1 ? "word" : "words")"
+    }
+}
+
+/// Bytes from a pipe, appended on its reading queue and read on another.
+private final class Collected: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes = Data()
+    func append(_ chunk: Data) { lock.lock(); bytes.append(chunk); lock.unlock() }
+    var data: Data { lock.lock(); defer { lock.unlock() }; return bytes }
 }
 
 /// Runs `codex <args>` with CODEX_HOME set to a Codex home; throws when it fails.
@@ -342,11 +371,14 @@ public struct CodexCLI {
         }
     }
 
-    public func run(_ args: [String], codexHome: URL) throws {
-        _ = try output(args, codexHome: codexHome)
+    /// Long enough for a plugin install on a slow disk; a codex that takes longer is stuck.
+    public static let timeout: TimeInterval = 120
+
+    public func run(_ args: [String], codexHome: URL, timeout: TimeInterval = CodexCLI.timeout) throws {
+        _ = try output(args, codexHome: codexHome, timeout: timeout)
     }
 
-    private func output(_ args: [String], codexHome: URL?) throws -> String {
+    private func output(_ args: [String], codexHome: URL?, timeout: TimeInterval = 15) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = args
@@ -361,22 +393,48 @@ public struct CodexCLI {
         process.standardOutput = pipe
         process.standardError = pipe
         process.standardInput = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+        let collected = Collected()
+        let fd = pipe.fileHandleForReading.fileDescriptor
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        let readerDone = DispatchSemaphore(value: 0)
         try process.run()
-        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
+        // One reader owns the pipe from start to end, so nothing read is ever lost between two.
+        // It stops at EOF, or once the process has ended and the pipe is empty: a child the
+        // process left behind may hold the pipe open, and waiting for that would block Connect.
+        Thread.detachNewThread {
+            var buffer = [UInt8](repeating: 0, count: 65_536)
+            while true {
+                let count = read(fd, &buffer, buffer.count)
+                if count > 0 { collected.append(Data(buffer[0..<count])); continue }
+                if count == 0 { break }
+                guard errno == EAGAIN || errno == EINTR else { break }
+                // Empty for now. Once the process has ended, one more look takes anything it wrote
+                // last; after that the pipe is done.
+                if !process.isRunning {
+                    let more = read(fd, &buffer, buffer.count)
+                    if more > 0 { collected.append(Data(buffer[0..<more])); continue }
+                    break
+                }
+                usleep(5_000)
+            }
+            readerDone.signal()
+        }
+        let timedOut = exited.wait(timeout: .now() + timeout) == .timedOut
+        if timedOut {
+            process.terminate()
+            if exited.wait(timeout: .now() + 2) == .timedOut { kill(process.processIdentifier, SIGKILL) }
+        }
+        _ = readerDone.wait(timeout: .now() + 2)
+        let data = collected.data
+        if timedOut {
+            throw Failed(args: args, status: -1, output: "Error: codex didn't finish within \(Int(timeout)) seconds\n" + String(decoding: data, as: UTF8.self))
+        }
+        let output = String(decoding: data, as: UTF8.self)
         guard process.terminationStatus == 0 else {
             throw Failed(args: args, status: process.terminationStatus, output: output)
         }
         return output
-    }
-}
-
-/// Codex runs hooks for its own background jobs too (the app's task suggestions), whose "reply"
-/// is JSON like {"suggestions":[]}. Those threads are never saved, so their transcript_path is
-/// empty or names no file; a chat a person is in always has one.
-public enum CodexHookPayload {
-    public static func isBackgroundJob(transcriptPath: String?, fileExists: (String) -> Bool = FileManager.default.fileExists(atPath:)) -> Bool {
-        guard let transcriptPath, !transcriptPath.isEmpty else { return true }
-        return !fileExists(transcriptPath)
     }
 }
