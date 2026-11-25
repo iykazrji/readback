@@ -151,7 +151,9 @@ struct MainView: View {
         switch navigation.section {
         case .home:
             HomePage(app: app, reader: app.reader, replies: app.replies, connections: app.connections,
-                     seeAll: { navigation.section = .history }, openConnections: { navigation.section = .connections })
+                     prefs: app.prefs, runtime: app.runtime,
+                     seeAll: { navigation.section = .history }, openConnections: { navigation.section = .connections },
+                     openVoices: { navigation.section = .voices })
         case .history:
             HistoryPage(app: app, reader: app.reader, replies: app.replies,
                         openConnections: { navigation.section = .connections })
@@ -451,20 +453,7 @@ private struct NowPlayingCard: View {
     /// The same height reading or idle, so the sidebar doesn't jump when a reply starts.
     private static let height: CGFloat = 72
 
-    private var voice: (engine: String, name: String) {
-        // The voice picked, and what's actually heard until its engine is in.
-        if prefs.engine.needsRuntime, !runtime.isInstalled {
-            return (prefs.engine.title.components(separatedBy: " (").first ?? prefs.engine.title, "macOS voice for now")
-        }
-        switch prefs.engine {
-        case .system: return ("macOS voice", prefs.systemVoice.isEmpty ? "System default" : (SystemVoice.voices().first { $0.identifier == prefs.systemVoice }?.name ?? ""))
-        case .kokoro: return ("Kokoro", VoiceCatalog.kokoroVoice(prefs.kokoroVoice)?.name ?? prefs.kokoroVoice)
-        case .melo: return ("MeloTTS", VoiceCatalog.meloVoices.first { $0.id == prefs.meloVoice }?.name ?? prefs.meloVoice)
-        case .soprano: return ("Soprano", "")
-        case .qwen3: return ("Qwen3-TTS", VoiceCatalog.qwen3Voices.first { $0.id == prefs.qwen3Voice }?.name ?? prefs.qwen3Voice)
-        case .custom: return ("Custom model", prefs.voiceSetup.model)
-        }
-    }
+    private var voice: (engine: String, name: String) { VoiceSummary.of(prefs, runtime) }
 }
 
 /// The sidebar's bottom tiles: a card surface that lifts on hover and press.

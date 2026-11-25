@@ -561,14 +561,7 @@ private struct ReplyRow: View {
 
     /// "just now", "12 min", then the time today, then the day: steadier to scan than
     /// "2 sec. ago", which is stale the moment the list opens.
-    static func when(_ date: Date, now: Date = Date()) -> String {
-        let seconds = now.timeIntervalSince(date)
-        if seconds < 60 { return "just now" }
-        if seconds < 3600 { return "\(Int(seconds / 60)) min" }
-        if Calendar.current.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
-        if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
-        return date.formatted(.dateTime.day().month(.abbreviated))
-    }
+    static func when(_ date: Date, now: Date = Date()) -> String { ShortTime.when(date, now: now) }
 
     @ViewBuilder private var mark: some View {
         if isPlaying {

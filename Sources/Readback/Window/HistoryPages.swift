@@ -9,18 +9,23 @@ struct HomePage: View {
     @ObservedObject var reader: Reader
     @ObservedObject var replies: Replies
     @ObservedObject var connections: Connections
+    @ObservedObject var prefs: Preferences
+    @ObservedObject var runtime: Runtime
     let seeAll: () -> Void
     let openConnections: () -> Void
+    let openVoices: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Home, top to bottom: what's reading now and what's next, the read-every-reply switches,
+    /// recent sessions, and setup at a glance. One column (owner's pick), one 24 pt gap between
+    /// sections, laid out as the home-plates mockup the owner signed off on 2026-11-25.
     var body: some View {
         ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    stats
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Recent replies").font(.system(size: 15, weight: .semibold))
-                            .accessibilityAddTraits(.isHeader)
-                        Spacer()
+            VStack(alignment: .leading, spacing: Spacing.xl) {
+                NowCard(app: app, reader: reader, replies: replies)
+                EveryReplyRow(prefs: prefs)
+                VStack(alignment: .leading, spacing: Spacing.s) {
+                    sectionHeader("Sessions") {
                         Button(action: seeAll) {
                             HStack(spacing: 6) {
                                 Text("See all")
@@ -30,85 +35,39 @@ struct HomePage: View {
                             }
                         }
                         .buttonStyle(.readback(.quiet))
+                        .controlSize(.small)
+                        .padding(.trailing, -ControlMetrics.smallQuietPadding)
                         .accessibilityLabel("See all")
-                            .disabled(replies.all.isEmpty)
+                        .disabled(replies.all.isEmpty)
                     }
                     if replies.all.isEmpty {
                         EmptyReplies(openConnections: openConnections)
                     } else {
-                        VStack(spacing: 10) {
-                            ForEach(replies.all.prefix(5)) { reply in
-                                ReplyCard(app: app, reply: reply, isPlaying: reader.isSpeaking && reader.replyID == reply.id)
-                                    .transition(ReplyCard.arrives(reduceMotion))
-                            }
-                        }
-                        .animation(Motion.spring(reduceMotion), value: replies.all.prefix(5).map(\.id))
-                        .padding(.top, -12)   // the cards belong to the heading above them
+                        SessionsList(app: app, sessions: SessionSummary.sessions(from: replies.all), reader: reader)
                     }
                 }
-                .padding(.horizontal, PageMetrics.inset)
-                .padding(.top, 8)
-                .padding(.bottom, PageMetrics.inset)
+                VStack(alignment: .leading, spacing: Spacing.s) {
+                    sectionHeader("Setup") { EmptyView() }
+                    SetupChips(prefs: prefs, runtime: runtime, connections: connections,
+                               openConnections: openConnections, openVoices: openVoices)
+                }
+            }
+            .animation(Motion.spring(reduceMotion), value: reader.isSpeaking)
+            .padding(.horizontal, PageMetrics.inset)
+            .padding(.top, 8)
+            .padding(.bottom, PageMetrics.inset)
         }
         .pageHeader(PageTitle("Home"))
     }
 
-    private var stats: some View {
-        HStack(spacing: 0) {
-            Stat(symbol: "text.bubble", value: replies.repliesRead.formatted(), label: "Replies read",
-                 help: "Replies Readback has read to you, all time")
-            Stat(symbol: "clock", value: listening, label: "Listening time",
-                 help: "An estimate: the words read, at about 165 words a minute")
-            Stat(symbol: "text.word.spacing", value: replies.wordsHeard.formatted(), label: "Words heard",
-                 help: "Words Readback has read to you, all time")
-            Stat(symbol: "terminal", value: "\(connectedCount) of \(Tool.allCases.count)", label: "Tools connected",
-                 help: "Claude Code, Codex and OpenCode, in Connections")
+    /// A section title, 20 pt tall whatever sits beside it, so every section starts the same way.
+    private func sectionHeader<Trailing: View>(_ title: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+            Spacer()
+            trailing()
         }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 6)
-        .surface()
-    }
-
-    /// Tools, not homes: Codex and Codex in Orca are one tool.
-    private var connectedCount: Int {
-        Set(connections.rows.filter { ConnectionText.isWorking($0.value) }.map(\.key.tool)).count
-    }
-
-    /// An estimate from the words read at about 165 a minute, so it says "~".
-    private var listening: String {
-        let minutes = Double(replies.wordsHeard) / 165
-        if replies.wordsHeard == 0 { return "0 min" }
-        if minutes < 1 { return "< 1 min" }
-        if minutes < 60 { return "~\(Int(minutes.rounded())) min" }
-        return "~\((minutes / 60).formatted(.number.precision(.fractionLength(0...1)))) h"
-    }
-}
-
-private struct Stat: View {
-    let symbol: String
-    let value: String
-    let label: String
-    let help: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(height: 16)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value).font(.system(size: 22, weight: .semibold).monospacedDigit())
-                Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .help(help)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-        .accessibilityValue(value.replacingOccurrences(of: "~", with: "about "))
-        .accessibilityHint(help)
+        .frame(height: 20)
     }
 }
 

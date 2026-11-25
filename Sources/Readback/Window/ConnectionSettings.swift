@@ -169,11 +169,5 @@ struct ToolTile: View {
             .accessibilityHidden(true)
     }
 
-    private var symbol: String {
-        switch tool {
-        case .claude: return "terminal"
-        case .codex: return "chevron.left.forwardslash.chevron.right"
-        case .opencode: return "curlybraces"
-        }
-    }
+    private var symbol: String { tool.symbol }
 }
