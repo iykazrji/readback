@@ -280,21 +280,14 @@ struct VoicesPage: View {
     @ViewBuilder private var voicePicker: some View {
         switch prefs.engine {
         case .system:
-            LabeledContent("Voice") {
-                Picker("Voice", selection: $prefs.systemVoice) {
-                    Text("System default").tag("")
-                    ForEach(systemGroups, id: \.name) { group in
-                        Section(group.name) {
-                            ForEach(group.voices, id: \.identifier) { voice in
-                                Text(Self.label(voice)).tag(voice.identifier)
-                            }
-                        }
-                    }
-                }
-                .labelsHidden()
-                .fixedSize()
-            }
-            .accessibilityLabel("Voice")
+            // Sits in the "Speaks as" row, so it takes that name rather than adding a row label of its own.
+            Dropdown("Speaks as", selection: $prefs.systemVoice,
+                     sections: [Dropdown.Section(title: nil, options: [.init(title: "System default", value: "")])]
+                        + systemGroups.map { group in
+                            Dropdown.Section(title: group.name,
+                                             options: group.voices.map { .init(title: Self.label($0), value: $0.identifier) })
+                        })
+            .fixedSize()
         case .kokoro:
             catalogPicker(VoiceCatalog.kokoroVoices, selection: $prefs.kokoroVoice)
         case .melo:
@@ -322,18 +315,11 @@ struct VoicesPage: View {
     private func catalogPicker(_ voices: [VoiceOption], selection: Binding<String>) -> some View {
         let groups = Dictionary(grouping: voices, by: \.group)
         let order = voices.map(\.group).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-        return LabeledContent("Voice") {
-            Picker("Voice", selection: selection) {
-                ForEach(order, id: \.self) { group in
-                    Section(group) {
-                        ForEach(groups[group] ?? []) { Text($0.name).tag($0.id) }
-                    }
-                }
-            }
-            .labelsHidden()
+        return Dropdown("Speaks as", selection: selection,
+                        sections: order.map { group in
+                            Dropdown.Section(title: group, options: (groups[group] ?? []).map { .init(title: $0.name, value: $0.id) })
+                        })
             .fixedSize()
-        }
-        .accessibilityLabel("Voice")
     }
 
     private var systemGroups: [(name: String, voices: [AVSpeechSynthesisVoice])] {

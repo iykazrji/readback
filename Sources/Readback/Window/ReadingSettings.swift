@@ -28,14 +28,10 @@ struct ReadingSettings: View {
 
             Section {
                 LabeledContent("Sound before reading") {
-                    Picker("Sound before reading", selection: $prefs.cueSound) {
-                        Text("None").tag("")
-                        ForEach(Self.cueSounds, id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
+                    Dropdown("Sound before reading", selection: $prefs.cueSound,
+                             options: [("None", "")] + Self.cueSounds.map { ($0, $0) })
                     .fixedSize()
                 }
-                .accessibilityLabel("Sound before reading")
                 .onChange(of: prefs.cueSound) { _, name in
                     // Hear it as you pick it.
                     if !name.isEmpty { NSSound(named: NSSound.Name(name))?.play() }
@@ -53,14 +49,10 @@ struct ReadingSettings: View {
 
             Section {
                 LabeledContent("When another reply arrives mid-reading") {
-                    Picker("When another reply arrives mid-reading", selection: $prefs.switchToNewReplies) {
-                        Text("Play it next").tag(false)
-                        Text("Switch to it").tag(true)
-                    }
-                    .labelsHidden()
+                    Dropdown("When another reply arrives mid-reading", selection: $prefs.switchToNewReplies,
+                             options: [("Play it next", false), ("Switch to it", true)])
                     .fixedSize()
                 }
-                .accessibilityLabel("When another reply arrives mid-reading")
             } header: {
                 Text("Several agents at once")
             } footer: {
@@ -69,26 +61,18 @@ struct ReadingSettings: View {
 
             Section("Player") {
                 LabeledContent("Speed") {
-                    Picker("Speed", selection: Binding(get: { reader.speed }, set: { reader.setSpeed($0) })) {
-                        ForEach(Reader.speeds.sorted(), id: \.self) { speed in
-                            Text(speed == 1 ? "Normal" : "\(speed.formatted(.number.precision(.fractionLength(0...2))))×").tag(speed)
-                        }
-                    }
-                    .labelsHidden()
+                    Dropdown("Speed", selection: Binding(get: { reader.speed }, set: { reader.setSpeed($0) }),
+                             options: Reader.speeds.sorted().map { speed in
+                                 (speed == 1 ? "Normal" : "\(speed.formatted(.number.precision(.fractionLength(0...2))))×", speed)
+                             })
                     .fixedSize()
                 }
-                .accessibilityLabel("Speed")
                 LabeledContent("When a reply ends") {
-                    Picker("When a reply ends", selection: $prefs.hideAfter) {
-                        Text("Hide after 4 seconds").tag(4.0)
-                        Text("Hide after 10 seconds").tag(10.0)
-                        Text("Hide after 30 seconds").tag(30.0)
-                        Text("Keep it open").tag(0.0)
-                    }
-                    .labelsHidden()
+                    Dropdown("When a reply ends", selection: $prefs.hideAfter,
+                             options: [("Hide after 4 seconds", 4.0), ("Hide after 10 seconds", 10.0),
+                                       ("Hide after 30 seconds", 30.0), ("Keep it open", 0.0)])
                     .fixedSize()
                 }
-                .accessibilityLabel("When a reply ends")
                 Toggle(isOn: $prefs.escCloses) {
                     Text("Esc closes the player")
                     Text("While the player is showing, Esc goes to Readback, not the app you're in.")

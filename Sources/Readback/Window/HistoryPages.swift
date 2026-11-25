@@ -179,13 +179,9 @@ struct HistoryPage: View {
             .padding(.bottom, PageMetrics.inset)
         }
         .pageHeader(PageTitle("History") {
-                Picker("Tool", selection: $tool) {
-                    Text("All tools").tag(Tool?.none)
-                    ForEach(Tool.allCases) { Text($0.name).tag(Tool?.some($0)) }
-                }
-                .labelsHidden()
+                Dropdown("Show replies from", selection: $tool,
+                         options: [("All tools", Tool?.none)] + Tool.allCases.map { ($0.name, Tool?.some($0)) })
                 .fixedSize()
-                .accessibilityLabel("Show replies from")
                 SearchField(text: $search, prompt: "Search replies")
                     .frame(width: 190)
                 // Straight away, with an undo, rather than a confirmation sheet: the sheet was slow

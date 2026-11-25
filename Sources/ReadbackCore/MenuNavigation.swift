@@ -28,6 +28,11 @@ public struct MenuNavigation: Equatable {
         highlighted = max((highlighted ?? titles.count) - 1, 0)
     }
 
+    /// The pointer is over this item.
+    public mutating func highlight(_ index: Int) {
+        if titles.indices.contains(index) { highlighted = index }
+    }
+
     public mutating func highlightFirst() {
         highlighted = titles.isEmpty ? nil : 0
     }

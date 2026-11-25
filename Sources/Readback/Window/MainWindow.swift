@@ -127,9 +127,9 @@ struct MainView: View {
                 .ignoresSafeArea(.container, edges: .top)
         }
         .frame(minWidth: 760, minHeight: 500)
-        .containerBackground(.clear, for: .window)
+        .containerBackground(.clear, for: .window)   // the panes draw their own glass
         // Every plain button in the window gets Readback's own look (Components/Buttons.swift).
-        .buttonStyle(.readback(.secondary))   // the panes draw their own glass
+        .buttonStyle(.readback(.secondary))
         .sheet(isPresented: $navigation.showingSetup) {
             SetupSheet(connections: app.connections, replies: app.replies, runtime: app.runtime, downloads: app.downloads, prefs: app.prefs,
                        openConnections: { navigation.section = .connections })

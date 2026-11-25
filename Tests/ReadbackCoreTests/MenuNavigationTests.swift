@@ -74,6 +74,14 @@ import Testing
         #expect(menu.highlighted == 2)
     }
 
+    @Test func pointingAtAnItemHighlightsIt() {
+        var menu = MenuNavigation(titles: tools, selected: 0)
+        menu.highlight(2)
+        #expect(menu.highlighted == 2)
+        menu.highlight(9)   // not an item: no change
+        #expect(menu.highlighted == 2)
+    }
+
     @Test func anEmptyMenuHighlightsNothing() {
         var menu = MenuNavigation(titles: [], selected: nil)
         menu.moveDown()
