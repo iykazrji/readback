@@ -303,14 +303,14 @@ private struct MenuPanel: View {
     }
 }
 
-/// The menu's own colours: a near-solid panel so the rows read crisply over anything, a hairline
+/// The menu's own colours: a solid panel (at 98% a switch behind it ghosted through), a hairline
 /// edge, and a neutral highlight (`ControlMetrics.menuHighlight`; no accent: the owner's
 /// black-and-white look, 2026-11-25).
 private enum MenuColors {
     static let panel = Color(nsColor: NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0x22 / 255, green: 0x23 / 255, blue: 0x27 / 255, alpha: 0.97)
-            : NSColor(srgbRed: 0xFC / 255, green: 0xFC / 255, blue: 0xFD / 255, alpha: 0.98)
+            ? NSColor(srgbRed: 0x22 / 255, green: 0x23 / 255, blue: 0x27 / 255, alpha: 1)
+            : NSColor(srgbRed: 0xFC / 255, green: 0xFC / 255, blue: 0xFD / 255, alpha: 1)
     })
     static let edge = Color(nsColor: NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.13) : NSColor(white: 0, alpha: 0.10)
