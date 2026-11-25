@@ -1,0 +1,48 @@
+Readback uses these open-source projects. Thank you to their authors.
+
+Shipped inside Readback.app
+---------------------------
+
+uv (installs the on-device voice engine; dual-licensed MIT or Apache-2.0, used here under MIT)
+https://github.com/astral-sh/uv
+
+  MIT License
+
+  Copyright (c) 2025 Astral Software Inc.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+Downloaded when you install the on-device engine or pick a voice
+----------------------------------------------------------------
+
+These are fetched from their official sources on your Mac, under their own licences:
+
+mlx-audio 0.6.7 (MIT, Copyright (c) 2024 Prince Canuma)
+  https://github.com/Blaizzy/mlx-audio
+Kokoro-82M voice model (Apache-2.0)
+  https://huggingface.co/hexgrad/Kokoro-82M, MLX build at https://huggingface.co/mlx-community/Kokoro-82M-bf16
+Qwen3-TTS 1.7B CustomVoice voice model (Apache-2.0)
+  https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice, MLX build at
+  https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
+misaki (Apache-2.0)
+  https://github.com/hexgrad/misaki
+spaCy and en_core_web_sm (MIT)
+  https://github.com/explosion/spaCy
+Python (Python Software Foundation License), via python-build-standalone
+  https://github.com/astral-sh/python-build-standalone

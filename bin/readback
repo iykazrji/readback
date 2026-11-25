@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# readback: hand an agent's reply to the Readback app, which reads it aloud in a floating player.
+#
+#   readback hook <source>          agent Stop hook (Codex, OpenCode): reads hook JSON on stdin
+#                                   (last_assistant_message, cwd), prints {} at once, then sends it.
+#                                   The app reads it if that tool's auto-read switch is on, and keeps
+#                                   it as the last reply either way.
+#   readback send <source> [cwd]    reply text on stdin; reads it now. Starts the app if needed.
+#   readback wait                   blocks while the app is still reading (paused included).
+#   readback stop                   stops and closes the player (safe to call from any hook).
+#   readback auto <tool> [on|off]   shows or sets a tool's auto-read switch (codex, opencode).
+#   readback say <text...>          read some text now (for testing).
+#   readback status
+set -u
+
+PORT="${READBACK_PORT:-8908}"
+BASE="http://127.0.0.1:$PORT"
+APP="${READBACK_APP:-$HOME/Applications/Readback.app}"
+LOG="$HOME/Library/Logs/Readback/cli.log"
+
+log() { mkdir -p "$(dirname "$LOG")"; echo "$(date '+%F %T') $*" >> "$LOG"; }
+
+health() { curl -s -m 1 "$BASE/health" 2>/dev/null; }
+up() { [ "$(curl -s -m 1 -o /dev/null -w '%{http_code}' "$BASE/health")" = "200" ]; }
+
+ensure_app() {
+  up && return 0
+  if [ ! -d "$APP" ]; then log "Readback.app isn't installed at $APP"; return 1; fi
+  open -g "$APP" || { log "couldn't open $APP"; return 1; }
+  for _ in $(seq 1 40); do up && return 0; sleep 0.25; done
+  log "Readback didn't answer on $BASE after starting it"
+  return 1
+}
+
+post() {  # post <path> ; JSON body on stdin ; prints the response
+  curl -s -m 5 -X POST -H 'Content-Type: application/json' --data-binary @- "$BASE$1"
+}
+
+send() {  # send <source> <cwd> <autoplay: true|null> ; text on stdin
+  local text; text=$(cat)
+  if [ -z "${text//[[:space:]]/}" ]; then log "$1: empty reply, nothing to read"; return 0; fi
+  ensure_app || return 1
+  local code
+  code=$(jq -n --arg t "$text" --arg s "$1" --arg c "${2:-}" --argjson a "${3:-true}" \
+      '{text:$t, source:$s, cwd:$c} + (if $a == null then {} else {autoplay:$a} end)' \
+    | curl -s -m 5 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary @- "$BASE/speak")
+  [ "$code" = "202" ] || { log "$1: /speak answered HTTP $code"; return 1; }
+}
+
+case "${1:-}" in
+  hook)
+    source="${2:-Agent}"
+    payload=$(cat)
+    printf '{}\n'   # Codex wants JSON on stdout from a Stop hook.
+    text=$(printf '%s' "$payload" | jq -r '.last_assistant_message // empty' 2>/dev/null)
+    cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)
+    if [ -z "$text" ]; then log "$source: hook payload had no last_assistant_message"; exit 0; fi
+    ( printf '%s' "$text" | send "$source" "$cwd" null ) >/dev/null 2>>"$LOG" &
+    exit 0 ;;
+  send)
+    send "${2:-Agent}" "${3:-}" true ;;
+  wait)
+    # Give the app a moment to start speaking, then wait while it is.
+    for _ in $(seq 1 20); do health | jq -e '.speaking' >/dev/null 2>&1 && break; sleep 0.25; done
+    while health | jq -e '.speaking' >/dev/null 2>&1; do sleep 0.5; done ;;
+  stop)
+    [ -t 0 ] || cat >/dev/null
+    up && echo '{}' | post /stop >/dev/null
+    exit 0 ;;
+  auto)
+    tool=$(printf '%s' "${2:-}" | tr '[:upper:]' '[:lower:]')
+    case "$tool" in codex|opencode) ;; *) echo "usage: readback auto codex|opencode [on|off]"; exit 2 ;; esac
+    ensure_app || { echo "Readback isn't running and couldn't be started (see $LOG)"; exit 1; }
+    case "${3:-}" in
+      on|off) jq -n --arg t "$tool" --argjson e "$([ "$3" = on ] && echo true || echo false)" '{tool:$t, enabled:$e}' \
+                | post /auto | jq -r '"Auto-read for \(.tool) is \(if .enabled then "ON" else "OFF" end)"' ;;
+      "")     health | jq -r --arg t "$tool" '"Auto-read for \($t) is \(if .auto[$t] then "ON" else "OFF" end)"' ;;
+      *)      echo "usage: readback auto $tool [on|off]"; exit 2 ;;
+    esac ;;
+  say)
+    shift
+    printf '%s' "$*" | send "Readback" "" true ;;
+  status)
+    if up; then health | jq .; else echo "Readback isn't running"; fi ;;
+  *)
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2 ;;
+esac

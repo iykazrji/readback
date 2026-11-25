@@ -1,0 +1,487 @@
+import AppKit
+import ReadbackCore
+import SwiftUI
+
+enum MainSection: String, Hashable, CaseIterable {
+    case home, history, voices, reading, connections, about
+
+    var title: String {
+        switch self {
+        case .home: return "Home"
+        case .history: return "History"
+        case .voices: return "Voices"
+        case .reading: return "Reading"
+        case .connections: return "Connections"
+        case .about: return "About"
+        }
+    }
+
+    /// The colour of the section's icon tile.
+    var tint: Color {
+        switch self {
+        case .home: return .orange
+        case .history: return .blue
+        case .voices: return .pink
+        case .reading: return .green
+        case .connections: return .gray
+        case .about: return .gray
+        }
+    }
+
+    /// The glyph on the section's icon tile.
+    var symbol: String {
+        switch self {
+        case .home: return "house.fill"
+        case .history: return "clock.arrow.circlepath"
+        case .voices: return "waveform"
+        case .reading: return "speaker.wave.2.fill"
+        case .connections: return "point.3.filled.connected.trianglepath.dotted"
+        case .about: return "info.circle.fill"
+        }
+    }
+}
+
+/// Readback's window: Home, History and the settings, in a sidebar like superwhisper's.
+/// While it's open Readback is a regular app (Dock icon, Cmd-Tab, app menu); closing it puts
+/// Readback back in the menu bar only.
+@MainActor
+final class MainWindowController: NSObject, NSWindowDelegate {
+    private let window: NSWindow
+    private unowned let app: AppDelegate
+    private let navigation = Navigation()
+
+    @MainActor final class Navigation: ObservableObject {
+        @Published var section: MainSection = .home
+        /// The first-run sheet that connects the coding tools.
+        @Published var showingSetup = false
+    }
+
+    init(app: AppDelegate) {
+        self.app = app
+        let root = MainView(app: app, navigation: navigation)
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 580),
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                          backing: .buffered, defer: false)
+        // An opaque window, after superwhisper: a page colour with the sidebar a step lighter.
+        // (It used to let the desktop show through; the owner found that too busy, 2026-11-24.)
+        let host = NSHostingView(rootView: root)
+        window.contentView = host
+        window.isOpaque = true
+        window.backgroundColor = WindowColors.pageNS
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        // An empty toolbar keeps the title bar at its toolbar height, so the window buttons sit
+        // level with each page's title. Without the sidebar button there'd be no toolbar at all,
+        // and the bar would shrink to a plain title bar.
+        window.toolbar = NSToolbar(identifier: "ReadbackMain")
+        window.toolbarStyle = .unifiedCompact
+        window.title = "Readback"
+        window.minSize = NSSize(width: 760, height: 500)
+        window.isReleasedWhenClosed = false
+        window.setContentSize(NSSize(width: 860, height: 580))
+        window.center()
+        window.setFrameAutosaveName("ReadbackMain")
+        super.init()
+        window.delegate = self
+    }
+
+    func show(_ section: MainSection?) {
+        if let section { navigation.section = section }
+        app.runtime.refresh()
+        app.connections.refresh()
+        NSApp.setActivationPolicy(.regular)
+        app.panelPolicyFlipped(to: "regular")
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// The window on Home with the setup sheet over it (first launch).
+    func showSetup() {
+        show(.home)
+        navigation.showingSetup = true
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        // Back to a menu bar app once the window is gone.
+        NSApp.setActivationPolicy(.accessory)
+        app.panelPolicyFlipped(to: "accessory")
+    }
+}
+
+struct MainView: View {
+    let app: AppDelegate
+    @ObservedObject var navigation: MainWindowController.Navigation
+
+    var body: some View {
+        NavigationSplitView {
+            Sidebar(app: app, reader: app.reader, replies: app.replies, prefs: app.prefs, selection: $navigation.section)
+                // The sidebar is always there; a button to hide it is one more thing by the window buttons.
+                .toolbar(removing: .sidebarToggle)
+                .navigationSplitViewColumnWidth(200)
+        } detail: {
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(WindowColors.page)
+                // The page title sits in the title bar's row, level with the window buttons.
+                .ignoresSafeArea(.container, edges: .top)
+        }
+        .frame(minWidth: 760, minHeight: 500)
+        .containerBackground(WindowColors.page, for: .window)
+        .sheet(isPresented: $navigation.showingSetup) {
+            SetupSheet(connections: app.connections, replies: app.replies, runtime: app.runtime, downloads: app.downloads, prefs: app.prefs,
+                       openConnections: { navigation.section = .connections })
+        }
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch navigation.section {
+        case .home:
+            HomePage(app: app, reader: app.reader, replies: app.replies, connections: app.connections,
+                     seeAll: { navigation.section = .history }, openConnections: { navigation.section = .connections })
+        case .history:
+            HistoryPage(app: app, reader: app.reader, replies: app.replies,
+                        openConnections: { navigation.section = .connections })
+        case .voices:
+            Page(title: "Voices") { VoicesPage(prefs: app.prefs, runtime: app.runtime, downloads: app.downloads,
+                                                  preview: app.preview, downloadNow: app.downloadVoice) }
+        case .reading:
+            Page(title: "Reading") { ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition) }
+        case .connections:
+            Page(title: "Connections") { ConnectionSettings(connections: app.connections, replies: app.replies) }
+        case .about:
+            Page(title: "About") { AboutSettings() }
+        }
+    }
+}
+
+/// A settings page: its title in a bar along the top, the form scrolling under it.
+struct Page<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            // The window's material shows through instead of the form's own grey.
+            .scrollContentBackground(.hidden)
+            .pageHeader(PageTitle(title))
+    }
+}
+
+/// Space between the window's edge and a page's content, shared so pages line up when you switch.
+enum PageMetrics {
+    /// Matches where a grouped Form puts its sections, so card pages and settings pages agree.
+    static let inset: CGFloat = 24
+    /// The title bar's row, which the window buttons sit in.
+    static let headerHeight: CGFloat = 38
+}
+
+extension View {
+    /// Puts `header` in a bar along the top that the page scrolls under, behind a frosted
+    /// material that fades out downwards: content blurs and dims as it slides under the title,
+    /// with no hard line. Drawn here on every macOS version: the system's own soft scroll edge
+    /// (`scrollEdgeEffectStyle`, macOS 26) didn't show under a header that isn't a toolbar
+    /// (checked on macOS 27.2).
+    func pageHeader<Header: View>(_ header: Header) -> some View {
+        modifier(PageHeader(header: header))
+    }
+}
+
+/// The header bar and its frosting. The frosting shows only once something has scrolled under
+/// the title: over the translucent window a second material at rest reads as a dark band.
+private struct PageHeader<Header: View>: ViewModifier {
+    let header: Header
+    @State private var scrolled = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top > 2
+            } action: { _, isScrolled in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { scrolled = isScrolled }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                header.background(alignment: .top) {
+                    Rectangle()
+                        .fill(.bar)
+                        .mask(LinearGradient(stops: [.init(color: .black, location: 0),
+                                                     .init(color: .black, location: 0.62),
+                                                     .init(color: .clear, location: 1)],
+                                             startPoint: .top, endPoint: .bottom))
+                        .frame(height: PageMetrics.headerHeight + 22)
+                        .opacity(scrolled ? 1 : 0)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+    }
+}
+
+struct PageTitle<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    init(_ title: String, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
+        self.title = title
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 17, weight: .bold))
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, PageMetrics.inset)
+        .frame(height: PageMetrics.headerHeight)   // centred on the window buttons' row
+    }
+}
+
+private struct Sidebar: View {
+    let app: AppDelegate
+    @ObservedObject var reader: Reader
+    @ObservedObject var replies: Replies
+    @ObservedObject var prefs: Preferences
+    @Binding var selection: MainSection
+    /// The row under the pointer. The sweep highlight sits here, and goes back to the selected
+    /// row when the pointer leaves the list.
+    @State private var hovered: MainSection?
+    @FocusState private var focused: Bool
+    @Namespace private var sweep
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let groups: [[MainSection]] = [[.home, .history], [.voices, .reading, .connections]]
+    private static var order: [MainSection] { groups.flatMap { $0 } }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(Self.groups.enumerated()), id: \.offset) { index, group in
+                    if index > 0 { Color.clear.frame(height: 14) }
+                    ForEach(group, id: \.self) { section in row(section) }
+                }
+            }
+            .onHover { inside in if !inside { hovered = nil } }
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.84), value: highlighted)
+            .focusable()
+            .focused($focused)
+            .focusEffectDisabled()
+            // The old list moved with the arrow keys; this keeps that.
+            .onMoveCommand { direction in
+                guard let at = Self.order.firstIndex(of: selection) else { return }
+                switch direction {
+                case .up: selection = Self.order[max(at - 1, 0)]
+                case .down: selection = Self.order[min(at + 1, Self.order.count - 1)]
+                default: break
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Sections")
+
+            Spacer(minLength: 12)
+
+            VStack(spacing: 8) {
+                NowPlayingCard(app: app, reader: reader, prefs: prefs, showVoices: { selection = .voices })
+                Button {
+                    selection = .about
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Readback").font(.system(size: 13, weight: .semibold))
+                        Text(Bundle.main.version).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                }
+                .buttonStyle(SidebarTileStyle(isSelected: selection == .about, radius: Radius.sidebarCard))
+                .accessibilityLabel("About Readback")
+                .accessibilityValue(Bundle.main.version)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
+        .frame(maxHeight: .infinity)
+        .background(WindowColors.sidebar.ignoresSafeArea())
+    }
+
+    private var highlighted: MainSection? {
+        if let hovered { return hovered }
+        return Self.order.contains(selection) ? selection : nil
+    }
+
+    private func row(_ section: MainSection) -> some View {
+        let isSelected = selection == section
+        return Button {
+            selection = section
+        } label: {
+            HStack(spacing: 10) {
+                IconTile(symbol: section.symbol, color: section.tint)
+                Text(section.title)
+                    .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 4)
+                if section == .history, replies.waitingCount > 0 {
+                    Text("\(replies.waitingCount)")
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .help("\(replies.waitingCount) waiting to be read")
+                }
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 34)
+            .contentShape(RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+        }
+        .buttonStyle(SidebarRowStyle())
+        .background {
+            if highlighted == section {
+                SweepHighlight(onSelection: section == selection)
+                    .matchedGeometryEffect(id: "sweep", in: sweep)
+            }
+        }
+        .onHover { inside in if inside { hovered = section } }
+        .accessibilityLabel(section.title)
+        .accessibilityValue(section == .history && replies.waitingCount > 0 ? "\(replies.waitingCount) waiting" : "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// The highlight that sweeps to the row under the pointer: a solid fill a step lighter than the
+/// sidebar, a little stronger while it rests on the selected row.
+private struct SweepHighlight: View {
+    let onSelection: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+            .fill(onSelection ? WindowColors.rowSelected : WindowColors.rowHighlight)
+    }
+}
+
+/// A section's icon: a white glyph on a small coloured tile, as in System Settings and superwhisper.
+private struct IconTile: View {
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 11.5, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 22, height: 22)
+            .background(color.gradient, in: RoundedRectangle(cornerRadius: Radius.iconTile, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
+
+/// Sidebar rows give a little when pressed.
+private struct SidebarRowStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// The sidebar's small card: what's playing (with Stop), or which voice is set (click to change it).
+private struct NowPlayingCard: View {
+    let app: AppDelegate
+    @ObservedObject var reader: Reader
+    @ObservedObject var prefs: Preferences
+    let showVoices: () -> Void
+
+    var body: some View {
+        if reader.isActive {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform")
+                        .symbolEffect(.variableColor.iterative, isActive: reader.phase == .playing)
+                        .accessibilityHidden(true)
+                    Text(reader.phase == .paused ? "Paused" : "Reading").font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .fixedSize()
+                    Spacer()
+                    Button("Stop") { app.stopEverything() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11))
+                }
+                Text(reader.title).font(.system(size: 12)).lineLimit(1).truncationMode(.tail)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: Self.height, alignment: .top)
+            .surface(radius: Radius.sidebarCard, emphasis: .active)
+        } else {
+            Button(action: showVoices) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Voice").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Text(voice.engine).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(voice.name.isEmpty ? " " : voice.name)
+                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .topLeading)
+            }
+            .buttonStyle(SidebarTileStyle(isSelected: false, radius: Radius.sidebarCard))
+            .help("Change the voice")
+            .accessibilityLabel("Voice: \(voice.engine)\(voice.name.isEmpty ? "" : ", \(voice.name)")")
+            .accessibilityHint("Opens Voices")
+        }
+    }
+
+    /// The same height reading or idle, so the sidebar doesn't jump when a reply starts.
+    private static let height: CGFloat = 72
+
+    private var voice: (engine: String, name: String) {
+        switch prefs.engine {
+        case .system: return ("macOS voice", prefs.systemVoice.isEmpty ? "System default" : (SystemVoice.voices().first { $0.identifier == prefs.systemVoice }?.name ?? ""))
+        case .kokoro: return ("Kokoro", VoiceCatalog.kokoroVoice(prefs.kokoroVoice)?.name ?? prefs.kokoroVoice)
+        case .melo: return ("MeloTTS", VoiceCatalog.meloVoices.first { $0.id == prefs.meloVoice }?.name ?? prefs.meloVoice)
+        case .soprano: return ("Soprano", "")
+        case .qwen3: return ("Qwen3-TTS", VoiceCatalog.qwen3Voices.first { $0.id == prefs.qwen3Voice }?.name ?? prefs.qwen3Voice)
+        case .custom: return ("Custom model", prefs.customModel)
+        }
+    }
+}
+
+/// The sidebar's bottom tiles: a card surface that lifts on hover and press.
+private struct SidebarTileStyle: ButtonStyle {
+    let isSelected: Bool
+    let radius: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        Tile(configuration: configuration, isSelected: isSelected, radius: radius)
+    }
+
+    private struct Tile: View {
+        let configuration: Configuration
+        let isSelected: Bool
+        let radius: CGFloat
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .surface(radius: radius, emphasis: configuration.isPressed || isSelected ? .active : hovering ? .hovered : .resting, on: .sidebar)
+                .onHover { hovering = $0 }
+                .animation(.easeOut(duration: 0.15), value: hovering)
+        }
+    }
+}
+
+/// A note under a settings section: small, grey, left-aligned (the Form default centres
+/// multi-line footers and draws them full size).
+struct FormNote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
