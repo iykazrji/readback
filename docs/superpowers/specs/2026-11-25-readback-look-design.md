@@ -86,7 +86,7 @@ All of them sink to 0.97 when pressed and spring back. Disabled is 40% opacity.
 **Checkbox** (new; replaces `.toggleStyle(.checkbox)` at `SetupSheet.swift:103` and `:111`). 20 × 20, 6 pt corners. Off: plate fill with the hover-strength edge. On: the primary plate with a contrasting check that pops in with a spring. The whole row is the hit target, Space toggles it, VoiceOver reads it as a checkbox.
 
 **Icon button** (new). A square plate with the edge. Where it goes (my calls, after the builder check found the mockup's player row used stand-in buttons):
-- The floating player's four `IconButton`s, as they are in `PlayerView.swift` today: Start over, Back a sentence, Play/Pause, Next sentence. Small size, 28 × 28, in the 36 pt bar. Same buttons, same actions; only the look changes. The mockup's "Back 15 seconds", "Skip to the next reply" and ✕ were placeholders, not a behaviour change.
+- Not the floating player's four transport buttons. They were built as 28 pt plates, and the owner asked for them back as they were on 2026-11-25 ("I think this is not nice"): hover-only fill, 26 pt, no edge. The player keeps the moving waveform.
 - The Voices download cancel (`VoicesPage.swift:483`): a small 28 × 28 icon plate with an `xmark`.
 - Not the search field's clear button: it stays a 20 pt round button inside the field, as in the mockup.
 
