@@ -1,6 +1,6 @@
 # Readback polish, new Home, resume and the Kokoro step
 
-Decided with the owner on 2026-11-25. Mockups the owner reacted to are in `.superpowers/brainstorm/37559-1795635937/content/` (gitignored): `window-material.html` (pick A), `home-layout.html` (pick A), `components-v2.html`, `upnext-live.html` (pick: the stack that unfolds).
+Decided with the owner on 2026-11-25. Calls the author made without the owner are marked "my call". Mockups the owner reacted to are in `.superpowers/brainstorm/37559-1795635937/content/` (gitignored): `window-material.html` (pick A), `home-layout.html` (pick A), `components-v2.html`, `upnext-live.html` (pick: the stack that unfolds).
 
 ## Why
 
@@ -76,7 +76,9 @@ Success is the owner opening the window and it looking and moving like something
 One column, top to bottom:
 
 - **Now** (only while something is reading or paused; nothing at all otherwise, no "Nothing reading" placeholder): a card with the play/pause button (flat, no shadow), the session's project and tool, the reply's first line, a progress bar, and a small level animation while it speaks. Below it, the waiting replies as a stack: at rest they peek out under the card with "N waiting"; hovering or clicking unfolds them into rows (tool mark, project, tool name). Clicking a row plays it now. A resumable reply (below) shows a small ring with how far it got.
-- **Sessions**: recent replies grouped by session, newest first. Each row: tool mark, project folder (the last part of `cwd`), tool name, how many replies, the time of the newest, and its first line. A play control plays the session's newest reply; clicking the row opens its replies in place (or in History filtered to it; builder's call). A session with unheard replies shows "N unheard", and playing from it starts with the oldest unheard.
+  The card has the reader's controls too: play/pause, Start over, and a progress bar you can drag (my call, so the window has what the floating player has).
+- **Read every reply** (owner, 2026-11-25: always on Home): a slim row that's always there, above Sessions, with a switch per tool (Claude Code, Codex, OpenCode). Same setting as Reading's switches.
+- **Sessions**: recent replies grouped by session, newest first. Each row: tool mark, project folder (the last part of `cwd`), tool name, how many replies, the time of the newest, and its first line. A play control plays the session's newest reply; clicking the row opens its replies in place (or in History filtered to it; builder's call). A session with unheard replies shows "N unheard", and playing from it catches you up (owner, 2026-11-25): the oldest unheard plays and the rest of that session's unheard replies join the stack behind it, in order.
 - **Setup**: a row of chips: the voice in use (and "Using the macOS voice · Get Kokoro" until Kokoro is installed, on Apple silicon), the engine if something's wrong with it, and each tool's state from `IntegrationFiles` (connected, needs approval, needs reconnecting), with a Fix button that does the same as the matching action in Connections.
 - "See all" goes to History, as now.
 
@@ -84,15 +86,21 @@ One column, top to bottom:
 
 - When the person jumps to another reply, or a new one cuts in, while a reply is playing or paused, that reply goes back to the front of the waiting stack with where it stopped (chunk and offset, or a fraction), and plays from there when its turn comes. It must not count twice in the played stats.
 - Close, Esc and Stop are unchanged: quiet, nothing resumes by itself.
+- The position outlives Close, Esc, Stop and quitting (owner, 2026-11-25: "where you stopped would be better"). It's stored on the reply in the saved history. Playing that reply later from Home, History or the stack picks up where it stopped. Part-heard replies show a small progress ring in Sessions and History until they're finished.
+- Where the controls are (owner asked for a proper way to do this; this is my proposal): the floating player comes into view as it does for any reading, with a short "Picked up at 40%" under the title, and its existing Start over button (`PlayerView`, `arrow.counterclockwise`) begins again. Home's Now card has the same controls.
+- A reply that finishes plays to the end clears its position. Start over clears it too.
 - This belongs in `ReadbackCore` (`ReplyQueue`, `ReplyHistory`) with tests; the reader already starts at an offset (`Reader.play(_:from:)`, `seek(to:)`).
 
 ### 5. Unheard
 
-- "Unheard" means a reply that was queued to play and then dropped by Close/Esc/Stop without being heard. It does **not** include replies nobody asked to read (read-aloud off), which are "kept" today. So the history needs to tell those apart (a new state or a flag on the reply); persist it, and migrate existing history as not unheard.
-- Playing an unheard reply clears it. Clearing history clears it.
+- "Unheard" means a reply that was queued to play and never started: dropped by Close/Esc/Stop, or still waiting when Readback quit (`ReplyQueue.init(restoring:)` turns those into kept today). It does **not** include replies nobody asked to read (read-aloud off), which are "kept" today. So the history needs to tell those apart (a new state or a flag on the reply); persist it, and migrate existing history as not unheard. (My call on the quit case.)
+- The reply that was playing when Close/Esc/Stop hit is part-heard, not unheard: it keeps its position (section 4). (My call.)
+- A reply stops being unheard the moment it starts playing, the same moment it counts as played today. Clearing history clears it. (My call.)
+- The 50-reply history cap stays as it is: unheard replies aren't protected and can age out like any other. (My call.)
 
 ### 6. The Kokoro step in setup
 
+- Where it sits (my calls): its own screen in the setup sheet, between choosing tools and the progress list. It shows whenever Kokoro isn't installed on Apple silicon, including when no tools were found and when every tool is already connected. Downloading stays a step in the progress list. Skipping leaves the engine setting on Kokoro (as today's default), so installing it later from Home switches over by itself; until then replies use the macOS voice.
 - On Apple silicon, the first-run setup sheet gets its own step after connecting tools: "Our recommended voice: Kokoro", one line on why, a **Play sample** button that plays about 5 s of pre-rendered Kokoro audio shipped in the app (no download needed), and a Download button with the existing meter (now `DownloadAmount`).
 - Skipping it is fine: replies read with the macOS voice, and Home's setup chip keeps offering Kokoro until it's installed. No popup later.
 - The existing "Natural voice" checkbox among the tools goes away in favour of this step.
@@ -100,7 +108,7 @@ One column, top to bottom:
 
 ## Order
 
-Each piece ships on its own, in this order: 1 window and spacing, 2 controls and motion, 3 new Home, 4 resume (with 5 unheard), 6 the Kokoro step. Home's stack needs resume for its ring; build the stack first without the ring if 4 isn't in yet.
+Built on the branch `fix/steady-download-numbers` (which has `DownloadAmount`, `SelfDraggingWindow` and the lower-other-sounds work, stacked on PR #1's branch). Each piece gets its own commits; PRs and pushes wait for the owner's yes. Each piece ships on its own, in this order: 1 window and spacing, 2 controls and motion, 3 new Home, 4 resume (with 5 unheard), 6 the Kokoro step. Home's stack needs resume for its ring; build the stack first without the ring if 4 isn't in yet.
 
 ## Checking it
 
