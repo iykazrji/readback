@@ -186,7 +186,7 @@ struct SetupSheet: View {
             let model = kokoro?.received ?? (runtime.step == .voice ? VoiceCatalog.kokoroBytes : 0)
             let got = engine + model
             let fraction = min(Double(got) / Double(Self.voiceTotal), 0.99)
-            let amount = "\(got.formatted(.byteCount(style: .file))) of \(Self.voiceTotal.formatted(.byteCount(style: .file)))"
+            let amount = DownloadAmount.text(received: got, total: Self.voiceTotal)
             return Step(id: "voice", title: "Get the natural voice", detail: "\(phase)…", state: .working,
                         meter: (fraction, amount))
         case .notInstalled, .unsupported:

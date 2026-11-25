@@ -16,12 +16,12 @@ final class ModelDownloads: ObservableObject {
             return min(Double(received) / Double(total), 0.99)
         }
 
-        /// "1.2 GB of 3.1 GB", or "120 MB" while the total isn't known.
-        var amount: String {
-            let got = received.formatted(.byteCount(style: .file))
-            guard let total else { return got }
-            return "\(got) of \(total.formatted(.byteCount(style: .file)))"
-        }
+        /// "1.24 of 3.08 GB", or "120 MB" while the total isn't known. One width for the whole
+        /// download, as long as it's drawn with `.monospacedDigit()`.
+        var amount: String { DownloadAmount.text(received: received, total: total) }
+
+        /// "40%", two digits wide, or nil while the total isn't known.
+        var percent: String? { fraction.map(DownloadAmount.percent) }
     }
 
     @Published private(set) var active: Status?

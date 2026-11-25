@@ -91,13 +91,20 @@ struct PlayerView: View {
                     HStack(spacing: 10) {
                         DotProgress(progress: download.fraction ?? 0, pulsing: download.fraction == nil)
                             .frame(height: 3)
-                        Text("Downloading the voice \u{00B7} \(download.amount)")
-                            .font(.system(size: 11, weight: .medium).monospacedDigit())
-                            .foregroundStyle(Theme.textDim)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .accessibilityLabel("Downloading the voice")
-                            .accessibilityValue(download.amount)
+                        // Two pieces, not "… · amount": the amount keeps one width by padding its
+                        // left end (DownloadAmount), which would show as a wide gap after a "·".
+                        // One width means the bar beside it never shrinks or grows as it counts.
+                        HStack(spacing: 8) {
+                            Text("Downloading the voice")
+                            Text(download.amount)
+                        }
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(Theme.textDim)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Downloading the voice")
+                        .accessibilityValue(download.amount)
                         CancelDownloadButton { onCancelDownload(download.model) }
                     }
                     .frame(height: 16)

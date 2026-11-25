@@ -226,9 +226,11 @@ struct VoicesPage: View {
                 if let download = downloads.active {
                     // The install's last step is the voice's first download.
                     ProgressView(value: download.fraction ?? 0)
+                    // Under the bar's right end, where the amount's one-width padding doesn't show.
                     Text(download.amount)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if let line = runtime.lastLines.last {
                     Text(line)
@@ -383,6 +385,9 @@ private struct EngineRow: View {
                 Text(speed).font(.system(size: 11.5)).foregroundStyle(.secondary)
                 downloadControl
             }
+            // Its natural width: the select button beside it takes all the spare room, and without
+            // this the column got squeezed until the download meter's text was cut off.
+            .fixedSize()
             .frame(minWidth: 150, alignment: .trailing)
         }
     }
@@ -444,16 +449,25 @@ private struct EngineRow: View {
             }
         case .downloading(let status):
             HStack(spacing: 8) {
-                VStack(alignment: .trailing, spacing: 3) {
+                // The percent under the bar's left end, the amount under its right end. The amount
+                // keeps one width (DownloadAmount), so neither it nor the bar moves as it counts up.
+                VStack(spacing: 3) {
                     if let fraction = status.fraction {
-                        ProgressView(value: fraction).frame(width: 110)
+                        ProgressView(value: fraction)
                     } else {
-                        ProgressView().progressViewStyle(.linear).frame(width: 110)
+                        ProgressView().progressViewStyle(.linear)
                     }
-                    Text(status.fraction.map { "\(Int($0 * 100))% \u{00B7} \(status.amount)" } ?? status.amount)
-                        .font(.system(size: 10.5).monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        if let percent = status.percent { Text(percent) }
+                        Spacer(minLength: 0)
+                        Text(status.amount)
+                    }
+                    .font(.system(size: 10.5).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 }
+                // "99%" and "3.08 of 3.08 GB" come to 110 pt at this size.
+                .frame(width: 120)
                 Button {
                     if let id = engine.model?.id { cancel(id) }
                 } label: {
