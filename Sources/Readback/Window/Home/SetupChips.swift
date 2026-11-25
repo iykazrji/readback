@@ -6,13 +6,37 @@ import SwiftUI
 struct EveryReplyRow: View {
     @ObservedObject var prefs: Preferences
 
+    /// One line when it fits; in a narrow window the title goes above and the switches get a line
+    /// of their own. Labels never wrap (owner, 2026-11-25: "OpenCo/de" at 760 pt was unacceptable).
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 22) {
+                title
+                Spacer(minLength: 12)
+                switches
+            }
+            .padding(.horizontal, Spacing.l)
+            .frame(height: ControlMetrics.height + 20)
+            VStack(alignment: .leading, spacing: 10) {
+                title
+                switches
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .surface()
+    }
+
+    private var title: some View {
+        Text("Read every reply").font(.system(size: 13, weight: .semibold)).lineLimit(1).fixedSize()
+    }
+
+    private var switches: some View {
         HStack(spacing: 22) {
-            Text("Read every reply").font(.system(size: 13, weight: .semibold))
-            Spacer(minLength: 12)
             ForEach(Tool.allCases, id: \.self) { tool in
                 HStack(spacing: 10) {
-                    Text(tool.name).font(.system(size: 13))
+                    Text(tool.name).font(.system(size: 13)).lineLimit(1).fixedSize()
                     ReadbackSwitch(isOn: Binding(get: { prefs.readsEveryReply(tool) },
                                                  set: { prefs.setReadsEveryReply(tool, $0) }))
                 }
@@ -23,9 +47,7 @@ struct EveryReplyRow: View {
                 .accessibilityAction { prefs.setReadsEveryReply(tool, !prefs.readsEveryReply(tool)) }
             }
         }
-        .padding(.horizontal, Spacing.l)
-        .frame(height: ControlMetrics.height + 20)
-        .surface()
+        .fixedSize()
     }
 }
 
@@ -96,6 +118,7 @@ private struct SetupChip<Content: View>: View {
     var leadsWithMark = true
     @ViewBuilder var content: () -> Content
     @State private var hovering = false
+    @FocusState private var focused: Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -125,6 +148,9 @@ private struct SetupChip<Content: View>: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .focused($focused)
+        .keyboardFocusRing(focused, shape)
         .onHover { hovering = $0 }
         .animation(Motion.spring(reduceMotion), value: hovering)
         .help(help)

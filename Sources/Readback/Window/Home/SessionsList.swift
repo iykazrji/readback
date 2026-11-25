@@ -1,3 +1,4 @@
+import AppKit
 import ReadbackCore
 import SwiftUI
 
@@ -23,10 +24,15 @@ struct SessionsList: View {
             }
         }
         .surface()
+        // A row's highlight can only round where the card itself rounds.
+        .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        // No system focus highlight anywhere in the list: it drew its own rounded block over a
+        // clicked session. Rows show Readback's neutral ring for keyboard focus instead.
+        .focusEffectDisabled()
     }
 
     /// Opening a session eases out with no bounce, so the rows below don't wobble.
-    private var reveal: Animation { reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 1) }
+    private var reveal: Animation { Motion.reveal(reduceMotion) }
 }
 
 private struct SessionRow: View {
@@ -36,6 +42,7 @@ private struct SessionRow: View {
     let open: Bool
     let toggle: () -> Void
     @State private var hovering = false
+    @FocusState private var focused: Bool
 
     /// From the top of the row's content to the top of the project name's capitals, at 13 pt in a
     /// 20 pt line: where the mark's top edge goes.
@@ -77,10 +84,13 @@ private struct SessionRow: View {
                 .padding(.horizontal, Spacing.l)
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
-                .background(hovering ? WindowColors.rowHighlight : .clear)
             }
             .buttonStyle(.plain)
-            .onHover { hovering = $0 }
+            // No system focus highlight (it drew a separate rounded block after a click); a
+            // neutral ring inside the row when it's reached by keyboard instead.
+            .focusEffectDisabled()
+            .focused($focused)
+            .overlay { KeyboardRingInside(focused: focused) }
             .overlay(alignment: .topTrailing) {
                 IconPlate("play.fill", help: playHelp) { app.play(session.newest) }
                     .padding(.top, 14 + Self.capTop + (Self.markSize - ControlMetrics.smallHeight) / 2)
@@ -105,6 +115,12 @@ private struct SessionRow: View {
                 .transition(.opacity)
             }
         }
+        // One highlight for the whole session, header and replies together, square-edged inside
+        // the card, and kept while it's open so it reads as one piece (owner, 2026-11-25: the
+        // header alone lit up as a separate rounded block above its replies).
+        .background { Rectangle().fill(open || hovering ? WindowColors.rowHighlight : .clear) }
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
     }
 
     private var meta: String {
@@ -128,6 +144,7 @@ private struct SessionReply: View {
     let unheard: Bool
     let playing: Bool
     @State private var hovering = false
+    @FocusState private var focused: Bool
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -150,6 +167,9 @@ private struct SessionReply: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .focused($focused)
+        .keyboardFocusRing(focused, RoundedRectangle(cornerRadius: 10, style: .continuous))
         .onHover { hovering = $0 }
         .accessibilityLabel(unheard ? "Unheard reply" : "Reply")
         .accessibilityHint("Plays it now")
@@ -168,5 +188,21 @@ struct UnheardBadge: View {
             .padding(.horizontal, 8)
             .frame(height: 20)
             .background(ControlMetrics.primaryFill(scheme), in: Capsule())
+    }
+}
+
+/// Readback's neutral keyboard ring drawn just inside a row, for rows that sit flush inside a
+/// clipped card where a ring outside would be cut off. Shows only for keyboard focus.
+private struct KeyboardRingInside: View {
+    let focused: Bool
+    @State private var viaKeyboard = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Rectangle()
+            .strokeBorder(ControlMetrics.focusRing(scheme), lineWidth: 2)
+            .opacity(focused && viaKeyboard ? 1 : 0)
+            .allowsHitTesting(false)
+            .onChange(of: focused) { _, now in viaKeyboard = now && NSApp.currentEvent?.type == .keyDown }
     }
 }

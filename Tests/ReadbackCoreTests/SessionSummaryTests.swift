@@ -53,6 +53,18 @@ import Testing
         #expect(SessionSummary.sessions(from: replies, limit: 8).first?.id == "s11")
     }
 
+    /// History saves times to the second, so two sessions' newest replies can tie. Their order
+    /// must never depend on input order: Home redraws many times a second while a reply plays,
+    /// and a tie that flipped made two rows swap back and forth (found 2026-11-25).
+    @Test func tiedSessionsKeepOneOrder() {
+        let a = reply("a", session: "alpha", at: 5), b = reply("b", session: "beta", at: 5), c = reply("c", session: "gamma", at: 5)
+        let one = SessionSummary.sessions(from: [a, b, c]).map(\.id)
+        let two = SessionSummary.sessions(from: [c, b, a]).map(\.id)
+        let three = SessionSummary.sessions(from: [b, c, a]).map(\.id)
+        #expect(one == two && two == three)
+        #expect(one == ["alpha", "beta", "gamma"])
+    }
+
     @Test func repliesComeNewestFirstInsideASession() {
         let replies = [reply("one", session: "s", at: 0), reply("three", session: "s", at: 2), reply("two", session: "s", at: 1)]
         #expect(SessionSummary.sessions(from: replies).first?.replies.map(\.text) == ["three", "two", "one"])

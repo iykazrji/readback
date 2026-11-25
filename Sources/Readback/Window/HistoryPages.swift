@@ -52,7 +52,6 @@ struct HomePage: View {
                                openConnections: openConnections, openVoices: openVoices)
                 }
             }
-            .animation(Motion.spring(reduceMotion), value: reader.isSpeaking)
             .padding(.horizontal, PageMetrics.inset)
             .padding(.top, 8)
             .padding(.bottom, PageMetrics.inset)

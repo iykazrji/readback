@@ -20,12 +20,14 @@ public struct SessionSummary: Identifiable, Equatable {
     public static func sessions(from replies: [Reply], limit: Int = 8) -> [SessionSummary] {
         let groups = Dictionary(grouping: replies, by: key)
         let summaries = groups.map { id, group -> SessionSummary in
-            let sorted = group.sorted { $0.received > $1.received }
+            let sorted = group.sorted { ($0.received, $1.id.uuidString) > ($1.received, $0.id.uuidString) }
             let newest = sorted[0]
             return SessionSummary(id: id, tool: newest.source.flatMap(Tool.init(source:)), project: project(of: newest), count: sorted.count,
                                   newest: newest, replies: sorted, unheard: [])
         }
-        return Array(summaries.sorted { $0.newest.received > $1.newest.received }.prefix(limit))
+        // Newest first; a tie (History keeps whole seconds) always breaks the same way, by id, so
+        // the rows never swap places from one redraw to the next.
+        return Array(summaries.sorted { ($0.newest.received, $1.id) > ($1.newest.received, $0.id) }.prefix(limit))
     }
 
     private static func key(_ reply: Reply) -> String {

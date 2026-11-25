@@ -10,6 +10,11 @@ struct NowCard: View {
     @ObservedObject var reader: Reader
     @ObservedObject var replies: Replies
     @State private var open = false
+    /// Whether the card is up. It follows the reader, but stays through the instant between one
+    /// reply stopping and the next starting, so playing another reply doesn't drop the card and
+    /// bring it back (that bounced the whole page, owner, 2026-11-25).
+    @State private var shown = false
+    @State private var hideTask: Task<Void, Never>?
     /// The card's real height, measured, so the stack starts exactly under it.
     @State private var cardHeight: CGFloat = 84
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,7 +25,26 @@ struct NowCard: View {
     private var playing: Reply? { reader.replyID.flatMap { id in replies.all.first { $0.id == id } } }
 
     var body: some View {
-        if reader.isSpeaking {
+        Group {
+            if shown { content }
+        }
+        .onAppear { shown = reader.isSpeaking }
+        .onChange(of: reader.isSpeaking) { _, speaking in
+            hideTask?.cancel()
+            if speaking {
+                if !shown { withAnimation(Motion.reveal(reduceMotion)) { shown = true } }
+            } else {
+                hideTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(600))
+                    guard !Task.isCancelled, !reader.isSpeaking else { return }
+                    withAnimation(Motion.reveal(reduceMotion)) { shown = false }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        if true {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .top) {
                     stack
@@ -30,8 +54,8 @@ struct NowCard: View {
                 .frame(height: open ? nil : cardHeight + CGFloat(min(waiting.count, 2)) * 8, alignment: .top)
                 if !waiting.isEmpty { toggle }
             }
-            .animation(Motion.spring(reduceMotion), value: open)
-            .animation(Motion.spring(reduceMotion), value: waiting.map(\.id))
+            .animation(Motion.reveal(reduceMotion), value: open)
+            .animation(Motion.reveal(reduceMotion), value: waiting.map(\.id))
             .onChange(of: waiting.isEmpty) { _, empty in if empty { open = false } }
             .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
         }
@@ -136,6 +160,7 @@ private struct WaitingRow: View {
     let place: Int
     let play: () -> Void
     @State private var hovering = false
+    @FocusState private var focused: Bool
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -156,6 +181,9 @@ private struct WaitingRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .focused($focused)
+        .keyboardFocusRing(focused, RoundedRectangle(cornerRadius: 12, style: .continuous))
         .onHover { hovering = $0 }
         .accessibilityLabel("Play \(tool?.name ?? "reply") in \(SessionSummary.sessions(from: [reply]).first?.project ?? "") now")
     }
@@ -170,6 +198,7 @@ private struct WaitingRow: View {
 struct PlayPauseButton: View {
     let playing: Bool
     let action: () -> Void
+    @FocusState private var focused: Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -183,6 +212,9 @@ struct PlayPauseButton: View {
                 .background(ControlMetrics.primaryFill(scheme), in: Circle())
         }
         .buttonStyle(PressScale())
+        .focusEffectDisabled()
+        .focused($focused)
+        .keyboardFocusRing(focused, Circle())
         .accessibilityLabel(playing ? "Pause" : "Play")
     }
 
