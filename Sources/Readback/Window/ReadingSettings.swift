@@ -45,6 +45,13 @@ struct ReadingSettings: View {
             }
 
             Section {
+                Toggle("Lower other sounds while reading", isOn: $prefs.lowerOtherAudio)
+                    .accessibilityLabel("Lower other sounds while reading")
+            } footer: {
+                FormNote("Music, videos and other apps drop to about a third of their volume while a reply plays. macOS asks for System Audio Recording permission when you switch this on: it's how Readback turns other apps down. Nothing is recorded or kept. To change it later: System Settings → Privacy & Security → Screen & System Audio Recording.")
+            }
+
+            Section {
                 LabeledContent("When another reply arrives mid-reading") {
                     Picker("When another reply arrives mid-reading", selection: $prefs.switchToNewReplies) {
                         Text("Play it next").tag(false)

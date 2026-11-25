@@ -49,6 +49,8 @@ Nothing is read out loud until you ask. Three ways to turn it on:
 
 The player: **Close** or **Esc** stops it. Sending a new message in the same session stops it too. Drag the player anywhere; it remembers where you put it. A reply that starts reading by itself plays a short **Pop** first and the voice follows a second later, so it doesn't catch you off guard; pick another sound, or none, in Reading → "Sound before reading".
 
+Music playing while it reads? Switch on Reading → "Lower other sounds while reading" and other apps drop to about a third of their volume during a reply, then come back. macOS asks for its **System Audio Recording** permission when you switch it on, because that's how Readback turns other apps down; the sound only passes through, and nothing is recorded or kept. The first reply after a quiet minute can make a small tick as Readback takes over the sound, right as the Pop plays.
+
 When several agents finish at once, the replies queue up instead of talking over each other: the player shows **+2** for two waiting, and the next one starts when the current one ends. Click the title in the player to see the list and jump to any of them. (Prefer being interrupted? Reading → "Switch to it".)
 
 Open Readback from Applications to get its window: **Home** shows your recent replies and a few numbers, **History** keeps the last 50 replies (search them, filter by tool, click to hear one again, right-click to copy or remove), and **Voices**, **Reading** and **Connections** hold the settings.

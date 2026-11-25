@@ -64,6 +64,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAudioCaptureUsageDescription</key><string>Readback turns other apps' sound down while it reads a reply aloud, if you switch that on in Reading. The sound only passes through: nothing is recorded or kept.</string>
   <key>NSHumanReadableCopyright</key><string>Readback. Voices run on your Mac.</string>
 </dict>
 </plist>

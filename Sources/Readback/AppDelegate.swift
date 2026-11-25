@@ -31,6 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// memory (850 MB to 3.5 GB, by model) overnight. The next reply then takes 2-3 s longer.
     /// A hidden `idleStopAfter` default (seconds) overrides it, for testing.
     static var idleStopAfter: TimeInterval { UserDefaults.standard.object(forKey: "idleStopAfter") as? Double ?? 3600 }
+    /// "Lower other sounds while reading": when (`ducking`) and how (`otherAudio`).
+    private var ducking = OtherAudioDucking()
+    private let otherAudio = OtherAudioLowerer()
+    private var restoreOtherAudio: Task<Void, Never>?
     private let replayItem = NSMenuItem(title: "Read last reply", action: #selector(replay), keyEquivalent: "")
     private let stopItem = NSMenuItem(title: "Stop", action: #selector(stopFromMenu), keyEquivalent: "")
 
@@ -61,6 +65,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .removeDuplicates()
             .sink { [weak self] phase in self?.readerMoved(to: phase) }
             .store(in: &cancellables)
+        // The switch: on asks macOS for the permission now, while the person is looking at it.
+        // (@Published sends the new value before the property holds it, so it's passed along.)
+        prefs.$lowerOtherAudio
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] on in
+                guard let self else { return }
+                if on, Self.otherAudioReading(self.reader.phase) == .stopped { self.otherAudio.askPermission() }
+                self.otherAudioChanged(Self.otherAudioReading(self.reader.phase), switchedOn: on)
+            }
+            .store(in: &cancellables)
 
         // An engine installed before a new package was added (MeloTTS's) gets it now; the
         // warm-up waits for that, so the engine starts with everything it needs.
@@ -81,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        otherAudio.stopNow()
         reader.close()
         let server = voiceServer
         let done = DispatchSemaphore(value: 0)
@@ -259,6 +275,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch phase {
         case .preparing, .playing, .paused: idleStop?.cancel()
         case .idle, .finished, .failed: scheduleIdleStop()
+        }
+        otherAudioChanged(Self.otherAudioReading(phase), switchedOn: prefs.lowerOtherAudio)
+    }
+
+    private static func otherAudioReading(_ phase: Reader.Phase) -> OtherAudioDucking.Reading {
+        switch phase {
+        case .preparing: return .preparing
+        case .playing: return .playing
+        case .idle, .paused, .finished, .failed: return .stopped
+        }
+    }
+
+    /// Other apps' sound follows the reading: taken over while it prepares, down while the voice
+    /// plays, back a moment after it stops.
+    private func otherAudioChanged(_ reading: OtherAudioDucking.Reading, switchedOn: Bool) {
+        carryOut(ducking.readingChanged(reading, switchedOn: switchedOn))
+    }
+
+    private func carryOut(_ step: OtherAudioDucking.Step) {
+        switch step {
+        case .nothing:
+            break
+        case .takeOver:
+            restoreOtherAudio?.cancel()
+            otherAudio.takeOver()
+        case .lower:
+            restoreOtherAudio?.cancel()
+            otherAudio.lower()
+        case .keepLowered, .keepTakenOver:
+            restoreOtherAudio?.cancel()
+        case .restoreAfter(let seconds):
+            restoreOtherAudio?.cancel()
+            restoreOtherAudio = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(seconds))
+                guard let self, !Task.isCancelled else { return }
+                self.carryOut(self.ducking.restoreDue(Self.otherAudioReading(self.reader.phase)))
+            }
+        case .restore:
+            restoreOtherAudio?.cancel()
+            otherAudio.restore()
         }
     }
 
