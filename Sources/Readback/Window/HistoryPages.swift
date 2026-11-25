@@ -11,6 +11,7 @@ struct HomePage: View {
     @ObservedObject var connections: Connections
     let seeAll: () -> Void
     let openConnections: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -30,8 +31,10 @@ struct HomePage: View {
                         VStack(spacing: 10) {
                             ForEach(replies.all.prefix(5)) { reply in
                                 ReplyCard(app: app, reply: reply, isPlaying: reader.isSpeaking && reader.replyID == reply.id)
+                                    .transition(ReplyCard.arrives(reduceMotion))
                             }
                         }
+                        .animation(Motion.spring(reduceMotion), value: replies.all.prefix(5).map(\.id))
                         .padding(.top, -12)   // the cards belong to the heading above them
                     }
                 }
@@ -147,6 +150,7 @@ struct HistoryPage: View {
     /// What the last Clear removed, while it can still be undone.
     @State private var cleared: [Reply] = []
     @State private var undoExpiry: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -172,9 +176,11 @@ struct HistoryPage: View {
                         .accessibilityAddTraits(.isHeader)
                     ForEach(group.replies) { reply in
                         ReplyCard(app: app, reply: reply, isPlaying: reader.isSpeaking && reader.replyID == reply.id)
+                            .transition(ReplyCard.arrives(reduceMotion))
                     }
                 }
             }
+            .animation(Motion.spring(reduceMotion), value: filtered.map(\.id))
             .padding(.horizontal, PageMetrics.inset)
             .padding(.bottom, PageMetrics.inset)
         }
@@ -280,6 +286,11 @@ struct HistoryPage: View {
 /// One reply as a card: where it came from, when, and its first lines. Click to hear it; the
 /// chevron opens the whole reply, selectable, in place.
 struct ReplyCard: View {
+    /// A card coming or going: it grows in from a little smaller and fades.
+    static func arrives(_ reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .scale(scale: 0.97).combined(with: .opacity)
+    }
+
     let app: AppDelegate
     let reply: Reply
     let isPlaying: Bool
@@ -330,6 +341,7 @@ struct ReplyCard: View {
         }
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(Motion.spring(reduceMotion), value: isPlaying)
         .contextMenu {
             Button("Play") { app.play(reply) }
             if canExpand {

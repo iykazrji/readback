@@ -348,6 +348,7 @@ private struct EngineRow: View {
     let select: () -> Void
     let download: (String) -> Void
     let cancel: (String) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             // Picking the voice is the row's main action; its download control sits to the right,
@@ -373,7 +374,10 @@ private struct EngineRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(speed).font(.system(size: 11.5)).foregroundStyle(.secondary)
                 downloadControl
+                    .transition(.opacity)
+                    .id(placeKind)
             }
+            .animation(Motion.spring(reduceMotion), value: placeKind)
             // Its natural width: the select button beside it takes all the spare room, and without
             // this the column got squeezed until the download meter's text was cut off.
             .fixedSize()
@@ -408,6 +412,19 @@ private struct EngineRow: View {
                 return .waiting(EngineKind.allCases.first { $0.model?.id == other }?.libraryName ?? "another voice")
             }
             return .download(model.size.replacingOccurrences(of: "about ", with: ""))
+        }
+    }
+
+    /// Which kind of control the row shows, so Download → meter → Downloaded animates as a change
+    /// of control, and the meter's own ticks don't.
+    private var placeKind: String {
+        switch place {
+        case .plain: return "plain"
+        case .download: return "download"
+        case .waiting: return "waiting"
+        case .downloading: return "downloading"
+        case .failed: return "failed"
+        case .downloaded: return "downloaded"
         }
     }
 

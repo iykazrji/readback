@@ -45,10 +45,13 @@ private struct ConnectionRow: View {
     let lastReply: Date?
     let connect: () -> Void
     let disconnect: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         LabeledContent {
             button
+                .transition(.opacity)
+                .id(stateKey)
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 ToolTile(tool: home.tool, connected: ConnectionText.isWorking(row))
@@ -63,6 +66,12 @@ private struct ConnectionRow: View {
             }
         }
         .padding(.vertical, 2)
+        .animation(Motion.spring(reduceMotion), value: stateKey)
+    }
+
+    /// Changes when the row's state does (not when "last reply" ticks on), for its animation.
+    private var stateKey: String {
+        "\(String(describing: row?.status))|\(row?.busy != nil)|\(row?.error != nil)"
     }
 
     @ViewBuilder private var button: some View {

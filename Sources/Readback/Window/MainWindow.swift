@@ -112,6 +112,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 struct MainView: View {
     let app: AppDelegate
     @ObservedObject var navigation: MainWindowController.Navigation
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
@@ -120,7 +121,13 @@ struct MainView: View {
                 .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(200)
         } detail: {
-            detail
+            // A new page fades in and settles 6 pt up; a plain fade with Reduce Motion.
+            ZStack(alignment: .topLeading) {
+                detail
+                    .id(navigation.section)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 6)))
+            }
+            .animation(Motion.spring(reduceMotion), value: navigation.section)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(GlassBackground(.underWindowBackground, tint: WindowColors.pageTint))
                 // The page title sits in the title bar's row, level with the window buttons.
