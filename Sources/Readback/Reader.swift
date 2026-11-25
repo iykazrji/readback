@@ -98,7 +98,9 @@ final class Reader: ObservableObject {
                 for index in chunks.indices {
                     try Task.checkCancellation()
                     let file = dir.appendingPathComponent("\(index).\(speaker.fileExtension)")
-                    try await speaker.make(chunks[index], to: file)
+                    // The player shows the reply as written; the voice says it for the ear
+                    // (paths as their file, no commit hashes, symbols as words: SpokenText).
+                    try await speaker.make(SpokenText.rewrite(chunks[index]), to: file)
                     guard self.run == run else { return }
                     self.audio[index] = file
                     self.durations[index] = Self.duration(of: file)
