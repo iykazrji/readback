@@ -84,13 +84,9 @@ struct VoicesPage: View {
                 if prefs.engine == .qwen3 {
                     // Trailing, like the voice picker above it, so the rows' controls line up.
                     LabeledContent("Delivery") {
-                        Picker("Delivery", selection: $prefs.qwen3Delivery) {
-                            ForEach(Delivery.allCases) { Text($0.title).tag($0) }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
+                        Segmented("Delivery", selection: $prefs.qwen3Delivery,
+                                  options: Delivery.allCases.map { ($0.title, $0) })
                         .fixedSize()
-                        .accessibilityLabel("Delivery")
                     }
                 }
             } header: {
@@ -151,11 +147,7 @@ struct VoicesPage: View {
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
-                    if let fraction = download.fraction {
-                        ProgressView(value: fraction)
-                    } else {
-                        ProgressView().progressViewStyle(.linear)
-                    }
+                    Meter(fraction: download.fraction)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Downloading \(model.name)")
@@ -227,7 +219,7 @@ struct VoicesPage: View {
                 }
                 if let download = downloads.active {
                     // The install's last step is the voice's first download.
-                    ProgressView(value: download.fraction ?? 0)
+                    Meter(fraction: download.fraction ?? 0)
                     // Under the bar's right end, where the amount's one-width padding doesn't show.
                     Text(download.amount)
                         .font(.caption.monospacedDigit())
@@ -461,11 +453,7 @@ private struct EngineRow: View {
                 // The percent under the bar's left end, the amount under its right end. The amount
                 // keeps one width (DownloadAmount), so neither it nor the bar moves as it counts up.
                 VStack(spacing: 3) {
-                    if let fraction = status.fraction {
-                        ProgressView(value: fraction)
-                    } else {
-                        ProgressView().progressViewStyle(.linear)
-                    }
+                    Meter(fraction: status.fraction)
                     HStack(spacing: 6) {
                         if let percent = status.percent { Text(percent) }
                         Spacer(minLength: 0)
@@ -477,18 +465,9 @@ private struct EngineRow: View {
                 }
                 // "99%" and "3.08 of 3.08 GB" come to 110 pt at this size.
                 .frame(width: 120)
-                Button {
+                IconPlate("xmark", help: "Cancel the download and delete what it fetched") {
                     if let id = engine.model?.id { cancel(id) }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)   // a target you don't miss, not just the 14 pt icon
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, -7)   // the target hangs past the icon; the icon keeps its place
-                .help("Cancel the download and delete what it fetched")
                 .accessibilityLabel("Cancel downloading \(name)")
             }
             .accessibilityElement(children: .contain)

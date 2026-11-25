@@ -100,7 +100,7 @@ struct SetupSheet: View {
                                         : row(home)?.status == .updateAvailable ? "A newer version of Readback's plugin is ready. This installs it."
                                         : nil)
                     }
-                    .toggleStyle(.checkbox)
+                    .toggleStyle(.readbackCheckbox)
                     .disabled(working)
                 }
                 if voiceOffered {
@@ -108,7 +108,7 @@ struct SetupSheet: View {
                         ChoiceLabel(tile: VoiceTile(ready: false), title: "Natural voice",
                                     detail: "Kokoro, downloaded to this Mac (\(Self.voiceTotal.formatted(.byteCount(style: .file)))). Until it's ready, replies use the macOS voice.")
                     }
-                    .toggleStyle(.checkbox)
+                    .toggleStyle(.readbackCheckbox)
                 }
             }
             FormNote("Connecting changes each tool's settings so its replies reach Readback. The old file stays beside it as <name>.before-readback, and Disconnect in Connections undoes it.")
@@ -358,8 +358,7 @@ struct SetupSheet: View {
                         .textSelection(.enabled)
                     if let meter = step.meter {
                         VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: meter.fraction)
-                                .progressViewStyle(.linear)
+                            Meter(fraction: meter.fraction)
                             Text(meter.amount)
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)

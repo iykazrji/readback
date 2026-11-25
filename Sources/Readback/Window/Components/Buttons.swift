@@ -103,8 +103,7 @@ struct ReadbackButtonStyle: ButtonStyle {
                 }
                 .opacity(kind == .primary && hovering && !configuration.isPressed ? 0.9 : 1)
                 .overlay {
-                    RoundedRectangle(cornerRadius: radius + 2, style: .continuous)
-                        .inset(by: -2)
+                    shape.inset(by: -2)   // the corner grows with the inset, so the ring stays parallel
                         .strokeBorder(ControlMetrics.focusRing(scheme), lineWidth: 2)
                         .opacity(isFocused ? 1 : 0)
                         .allowsHitTesting(false)

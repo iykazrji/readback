@@ -34,11 +34,7 @@ struct ReadbackSwitch: View {
                 .padding(inset)
         }
         .frame(width: width, height: height)
-        .overlay {
-            Capsule().inset(by: -2).strokeBorder(ControlMetrics.focusRing(scheme), lineWidth: 2)
-                .opacity(focused ? 1 : 0)
-                .allowsHitTesting(false)
-        }
+        .keyboardFocusRing(focused, Capsule())
         .opacity(isEnabled ? 1 : 0.4)
         .animation(Motion.spring(reduceMotion), value: isOn)
         .animation(Motion.spring(reduceMotion), value: pressing)

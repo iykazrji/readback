@@ -69,8 +69,8 @@ struct SearchField: View {
         }
         .overlay {
             // Focus: a neutral 2 pt ring 2 pt outside the edge, so the field's size never changes.
-            RoundedRectangle(cornerRadius: ControlMetrics.radius + 2, style: .continuous)
-                .inset(by: -2)
+            // Insetting by -2 also grows the corner by 2, so the ring runs parallel to the edge.
+            shape.inset(by: -2)
                 .strokeBorder(ControlMetrics.focusRing(scheme), lineWidth: 2)
                 .opacity(focused ? 1 : 0)
                 .allowsHitTesting(false)
