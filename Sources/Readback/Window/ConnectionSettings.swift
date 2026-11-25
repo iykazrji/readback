@@ -76,7 +76,7 @@ private struct ConnectionRow: View {
     /// Whatever state it's in, a row with anything of Readback's in it can be disconnected.
     @ViewBuilder private var actionButton: some View {
         switch row?.status {
-        case .connected?, .waitingForApproval?: Button("Disconnect", action: disconnect)
+        case .connected?, .waitingForApproval?: Button("Disconnect", action: disconnect).buttonStyle(.readback(.destructive))
         case .stale?, .incomplete?: repairButtons("Reconnect")
         case .outdated?, .updateAvailable?: repairButtons("Update")
         default: Button("Connect", action: connect).disabled(row?.installed != true)
@@ -85,7 +85,7 @@ private struct ConnectionRow: View {
 
     private func repairButtons(_ title: String) -> some View {
         HStack(spacing: 8) {
-            Button("Disconnect", action: disconnect)
+            Button("Disconnect", action: disconnect).buttonStyle(.readback(.destructive))
             Button(title, action: connect)
         }
     }

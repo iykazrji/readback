@@ -21,7 +21,7 @@ struct HomePage: View {
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
                         Button("See all", action: seeAll)
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.readback(.quiet))
                             .disabled(replies.all.isEmpty)
                     }
                     if replies.all.isEmpty {
@@ -191,6 +191,7 @@ struct HistoryPage: View {
                 // Straight away, with an undo, rather than a confirmation sheet: the sheet was slow
                 // to appear (0.6-1.3 s) and stood between you and something you can take back.
                 Button("Clear", action: clear)
+                    .buttonStyle(.readback(.destructive))
                     .disabled(replies.all.isEmpty)
                     .help("Remove every saved reply. You can undo it for a few seconds.")
         })

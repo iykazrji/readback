@@ -127,7 +127,9 @@ struct MainView: View {
                 .ignoresSafeArea(.container, edges: .top)
         }
         .frame(minWidth: 760, minHeight: 500)
-        .containerBackground(.clear, for: .window)   // the panes draw their own glass
+        .containerBackground(.clear, for: .window)
+        // Every plain button in the window gets Readback's own look (Components/Buttons.swift).
+        .buttonStyle(.readback(.secondary))   // the panes draw their own glass
         .sheet(isPresented: $navigation.showingSetup) {
             SetupSheet(connections: app.connections, replies: app.replies, runtime: app.runtime, downloads: app.downloads, prefs: app.prefs,
                        openConnections: { navigation.section = .connections })
@@ -401,7 +403,7 @@ private struct NowPlayingCard: View {
                         .fixedSize()
                     Spacer()
                     Button("Stop") { app.stopEverything() }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.readback(.quiet))
                         .font(.system(size: 11))
                 }
                 Text(reader.title).font(.system(size: 12)).lineLimit(1).truncationMode(.tail)

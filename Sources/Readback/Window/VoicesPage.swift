@@ -164,6 +164,7 @@ struct VoicesPage: View {
                 let failure = downloads.failure?.model == model.id ? downloads.failure?.reason : nil
                 LabeledContent {
                     Button(failure == nil ? "Download now" : "Try again", action: downloadNow)
+                        .buttonStyle(.readback(.primary))
                 } label: {
                     Text(failure == nil ? "\(model.name) isn't downloaded yet" : "\(model.name) didn't finish downloading")
                     Text(failure ?? downloadNote(size: model.size))
@@ -211,6 +212,7 @@ struct VoicesPage: View {
         case .notInstalled:
             LabeledContent {
                 Button("Install") { install() }
+                    .buttonStyle(.readback(.primary))
             } label: {
                 Text("Not installed")
                 Text(installNote).font(.caption).foregroundStyle(.secondary)
@@ -243,6 +245,7 @@ struct VoicesPage: View {
         case .installed:
             LabeledContent {
                 Button("Remove…") { confirmRemove = true }
+                    .buttonStyle(.readback(.destructive))
             } label: {
                 Text("Installed")
                 Text("Kept in ~/Library/Application Support/Readback/runtime.").font(.caption).foregroundStyle(.secondary)

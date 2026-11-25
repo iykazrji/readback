@@ -49,6 +49,7 @@ struct SetupSheet: View {
         }
         .padding(24)
         .frame(width: 520)
+        .buttonStyle(.readback(.secondary))
         // Esc closes it on every screen, not only where there's a Cancel-style button.
         .onExitCommand { dismiss() }
         .onAppear {
@@ -76,7 +77,7 @@ struct SetupSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button("Done") { dismiss() }.buttonStyle(.readback(.primary)).keyboardShortcut(.defaultAction).buttonStyle(.readback(.primary))
             }
         }
     }
@@ -115,6 +116,7 @@ struct SetupSheet: View {
                 Spacer()
                 Button("Not now") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Set up") { start() }
+                    .buttonStyle(.readback(.primary))
                     .keyboardShortcut(.defaultAction)
                     .disabled(chosen.isEmpty && !(voiceOffered && getVoice))
             }
@@ -250,7 +252,7 @@ struct SetupSheet: View {
                     dismiss()
                 }
                 Spacer()
-                Button(title == "All set" ? "Done" : "Close") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button(title == "All set" ? "Done" : "Close") { dismiss() }.keyboardShortcut(.defaultAction).buttonStyle(.readback(.primary))
             }
         }
     }
