@@ -156,13 +156,15 @@ enum ConnectionText {
 struct ToolTile: View {
     let tool: Tool
     let connected: Bool
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(connected ? ControlMetrics.primaryText(scheme) : .white)
             .frame(width: 28, height: 28)
-            .background(connected ? Color.accentColor : Color.gray.opacity(0.6),
+            // Connected is the solid plate, not the accent (owner's black-and-white look, 2026-11-25).
+            .background(connected ? ControlMetrics.primaryFill(scheme) : Color.gray.opacity(0.6),
                         in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
             .accessibilityHidden(true)
     }

@@ -74,6 +74,7 @@ struct PlayerView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
         .onHover(perform: onHover)
         .environment(\.colorScheme, .dark)
+        .tint(.primary)   // no accent anywhere (owner's black-and-white look, 2026-11-25)
     }
 
     @ViewBuilder private var nowPlaying: some View {

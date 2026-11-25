@@ -357,7 +357,7 @@ private struct EngineRow: View {
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 15))
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(name).font(.system(size: 13, weight: .medium))
                         Text(blurb).font(.system(size: 11.5)).foregroundStyle(.secondary)

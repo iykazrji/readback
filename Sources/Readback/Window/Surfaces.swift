@@ -44,8 +44,9 @@ enum WindowColors {
     /// glass they stay a step above whatever shows through (a solid dark card read as a hole).
     static let card = overlay(light: (1, 0.72), dark: (1, 0.06))
     static let cardHover = overlay(light: (1, 0.9), dark: (1, 0.09))
-    /// A card that's playing or chosen: the accent, lightly.
-    static let cardActive = Color.accentColor.opacity(0.16)
+    /// A card that's playing or chosen: a neutral tint a step above a resting card (no accent:
+    /// the owner's black-and-white look, 2026-11-25; my call to keep it a tint, not a solid plate).
+    static let cardActive = overlay(light: (0, 0.07), dark: (1, 0.12))
     /// Sidebar cards and the highlight sit on the sidebar, so they're a step lighter than it.
     static let sidebarCard = overlay(light: (1, 0.55), dark: (1, 0.06))
     static let rowHighlight = overlay(light: (0, 0.05), dark: (1, 0.07))
@@ -124,7 +125,7 @@ struct CardFormStyle: FormStyle {
                                     // a dropdown are the same height.
                                     .frame(maxWidth: .infinity, minHeight: ControlMetrics.height, alignment: .leading)
                                     .padding(.horizontal, Spacing.l)
-                                    .padding(.vertical, Spacing.m)
+                                    .padding(.vertical, 10)   // 34 + 10 + 10: 54 pt rows
                             }
                         }
                         .surface()

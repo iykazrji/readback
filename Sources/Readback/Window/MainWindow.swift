@@ -137,9 +137,13 @@ struct MainView: View {
         .containerBackground(.clear, for: .window)   // the panes draw their own glass
         // Every plain button in the window gets Readback's own look (Components/Buttons.swift).
         .buttonStyle(.readback(.secondary))
+        // Anything still stock (a small spinner, a text selection) draws in black and white, not
+        // the system accent: the owner's black-and-white look, 2026-11-25.
+        .tint(.primary)
         .sheet(isPresented: $navigation.showingSetup) {
             SetupSheet(connections: app.connections, replies: app.replies, runtime: app.runtime, downloads: app.downloads, prefs: app.prefs,
                        openConnections: { navigation.section = .connections })
+                .tint(.primary)
         }
     }
 

@@ -333,6 +333,7 @@ struct SetupSheet: View {
 
     private struct StepRow: View {
         let step: Step
+        @Environment(\.colorScheme) private var scheme
 
         var body: some View {
             HStack(alignment: .top, spacing: 12) {
@@ -343,10 +344,11 @@ struct SetupSheet: View {
                         if step.state == .yourTurn {
                             Text("Your turn")
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(.primary)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 2)
-                                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                .background(ControlMetrics.fill(scheme), in: Capsule())
+                                .overlay(Capsule().strokeBorder(ControlMetrics.edge(scheme), lineWidth: ControlMetrics.edgeWidth))
                         }
                     }
                     Text(step.detail)
@@ -394,7 +396,7 @@ struct SetupSheet: View {
                 case .waiting: Image(systemName: "circle").foregroundStyle(.tertiary)
                 case .working: ProgressView().controlSize(.small)
                 case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                case .yourTurn: Image(systemName: "arrow.right.circle.fill").foregroundStyle(Color.accentColor)
+                case .yourTurn: Image(systemName: "arrow.right.circle.fill").foregroundStyle(.primary)
                 case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                 }
             }
@@ -408,13 +410,14 @@ struct SetupSheet: View {
 /// The voice's tile, drawn like the tools' tiles: tinted once the voice is ready.
 private struct VoiceTile: View {
     let ready: Bool
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Image(systemName: "waveform")
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(ready ? ControlMetrics.primaryText(scheme) : .white)
             .frame(width: 28, height: 28)
-            .background(ready ? Color.accentColor : Color.gray.opacity(0.6),
+            .background(ready ? ControlMetrics.primaryFill(scheme) : Color.gray.opacity(0.6),
                         in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
             .accessibilityHidden(true)
     }
