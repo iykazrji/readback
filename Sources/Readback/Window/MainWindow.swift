@@ -59,7 +59,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     init(app: AppDelegate) {
         self.app = app
         let root = MainView(app: app, navigation: navigation)
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 580),
+        // Moves itself when a title bar drag starts: macOS 27.2 drops the system's (see the class).
+        window = SelfDraggingWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 580),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         // An opaque window, after superwhisper: a page colour with the sidebar a step lighter.
