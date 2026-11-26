@@ -52,8 +52,8 @@ public struct Reply: Codable, Identifiable, Equatable {
     }
 }
 
-/// Recent replies, newest first, capped. Replies still waiting to be read are never dropped
-/// to make room; the oldest finished ones go first.
+/// Recent replies, newest first, capped. Replies still waiting to be read, and the one being
+/// read, are never dropped to make room; the oldest finished ones go first.
 public struct ReplyHistory: Codable, Equatable {
     public private(set) var replies: [Reply] = []
     public var limit: Int
