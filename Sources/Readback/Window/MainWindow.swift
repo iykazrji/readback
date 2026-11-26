@@ -51,9 +51,20 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private let navigation = Navigation()
 
     @MainActor final class Navigation: ObservableObject {
-        @Published var section: MainSection = .home
+        @Published var section: MainSection = .home {
+            // Leaving History drops the session it was showing, so it's whole next time.
+            didSet { if section != .history { historySession = nil } }
+        }
+        /// The one session History shows, set by Home's "See all N replies"; nil shows them all.
+        @Published var historySession: SessionSummary?
         /// The first-run sheet that connects the coding tools.
         @Published var showingSetup = false
+
+        /// History with only this session's replies.
+        func showHistory(of session: SessionSummary?) {
+            historySession = session
+            section = .history
+        }
     }
 
     init(app: AppDelegate) {
@@ -152,10 +163,11 @@ struct MainView: View {
         case .home:
             HomePage(app: app, reader: app.reader, replies: app.replies, connections: app.connections,
                      prefs: app.prefs, runtime: app.runtime,
-                     seeAll: { navigation.section = .history }, openConnections: { navigation.section = .connections },
+                     seeAll: { navigation.showHistory(of: nil) }, openSession: { navigation.showHistory(of: $0) },
+                     openConnections: { navigation.section = .connections },
                      openVoices: { navigation.section = .voices })
         case .history:
-            HistoryPage(app: app, reader: app.reader, replies: app.replies,
+            HistoryPage(app: app, reader: app.reader, replies: app.replies, session: $navigation.historySession,
                         openConnections: { navigation.section = .connections })
         case .voices:
             // Builds its own header: the engine bar pins under the title (VoicesPage.engineBar).
@@ -252,6 +264,10 @@ struct PageTitle<Trailing: View>: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(.system(size: 17, weight: .bold))
+                // The title keeps its room; the controls beside it give way first (History's
+                // session chip pushed it out at 760 pt, 2026-11-26).
+                .fixedSize()
+                .layoutPriority(1)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             trailing()

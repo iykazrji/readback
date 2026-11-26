@@ -11,6 +11,7 @@ struct SessionsList: View {
     let app: AppDelegate
     let sessions: [SessionSummary]
     @ObservedObject var reader: Reader
+    let openSession: (SessionSummary) -> Void
     @State private var openID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -18,7 +19,8 @@ struct SessionsList: View {
         VStack(spacing: 0) {
             ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
                 if index > 0 { WindowColors.hairline.frame(height: 1).padding(.leading, Spacing.l) }
-                SessionRow(app: app, session: session, reader: reader, open: openID == session.id) {
+                SessionRow(app: app, session: session, reader: reader, open: openID == session.id,
+                           seeAll: { openSession(session) }) {
                     withAnimation(reveal) { openID = openID == session.id ? nil : session.id }
                 }
             }
@@ -40,6 +42,7 @@ private struct SessionRow: View {
     let session: SessionSummary
     @ObservedObject var reader: Reader
     let open: Bool
+    let seeAll: () -> Void
     let toggle: () -> Void
     @State private var hovering = false
     @FocusState private var focused: Bool
@@ -48,6 +51,8 @@ private struct SessionRow: View {
     /// 20 pt line: where the mark's top edge goes.
     private static let capTop: CGFloat = 5
     private static let markSize: CGFloat = 30
+    /// How many replies an open session shows on Home; the rest are a click away in History.
+    static let shown = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -102,16 +107,33 @@ private struct SessionRow: View {
             .accessibilityHint("Shows this session's replies")
 
             if open {
-                VStack(spacing: 6) {
-                    ForEach(session.replies.prefix(10)) { reply in
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(session.replies.prefix(Self.shown)) { reply in
                         SessionReply(app: app, reply: reply, unheard: session.unheard.contains { $0.id == reply.id },
                                      playing: reader.isSpeaking && reader.replyID == reply.id)
+                    }
+                    if session.count > Self.shown {
+                        Button(action: seeAll) {
+                            HStack(spacing: 6) {
+                                Text("See all \(session.count) replies")
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.readback(.quiet))
+                        .controlSize(.small)
+                        // The words start on the replies' left edge, as the header's "See all" ends on its right.
+                        .padding(.leading, -ControlMetrics.smallQuietPadding)
+                        .help("Opens History with only \(session.project)'s replies")
                     }
                 }
                 // Lines up with the project name: chevron 10 + 12 + mark 30 + 12.
                 .padding(.leading, Spacing.l + 10 + 12 + Self.markSize + 12)
                 .padding(.trailing, Spacing.l)
-                .padding(.bottom, 14)
+                // The quiet button carries its own 28 pt height, so 8 under it leaves the same
+                // space below its words as above them.
+                .padding(.bottom, session.count > Self.shown ? 8 : 14)
                 .transition(.opacity)
             }
         }

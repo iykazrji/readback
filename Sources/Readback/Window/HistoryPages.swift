@@ -12,6 +12,7 @@ struct HomePage: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var runtime: Runtime
     let seeAll: () -> Void
+    let openSession: (SessionSummary) -> Void
     let openConnections: () -> Void
     let openVoices: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -43,7 +44,8 @@ struct HomePage: View {
                     if replies.all.isEmpty {
                         EmptyReplies(openConnections: openConnections)
                     } else {
-                        SessionsList(app: app, sessions: SessionSummary.sessions(from: replies.all), reader: reader)
+                        SessionsList(app: app, sessions: SessionSummary.sessions(from: replies.all), reader: reader,
+                                     openSession: openSession)
                     }
                 }
                 VStack(alignment: .leading, spacing: Spacing.s) {
@@ -110,6 +112,8 @@ struct HistoryPage: View {
     let app: AppDelegate
     @ObservedObject var reader: Reader
     @ObservedObject var replies: Replies
+    /// The one session to show, from Home's "See all N replies"; nil shows every session.
+    @Binding var session: SessionSummary?
     let openConnections: () -> Void
     @State private var search = ""
     @State private var tool: Tool?
@@ -126,10 +130,12 @@ struct HistoryPage: View {
                 if replies.all.isEmpty {
                     EmptyReplies(openConnections: openConnections)
                 } else if filtered.isEmpty {
-                    EmptyCard(title: noMatchTitle, message: "Try other words, or look through every tool.") {
+                    EmptyCard(title: noMatchTitle,
+                              message: session == nil ? "Try other words, or look through every tool." : "Try other words, or look through every session.") {
                         Button("Show all replies") {
                             search = ""
                             tool = nil
+                            session = nil
                         }
                     }
                 }
@@ -151,16 +157,26 @@ struct HistoryPage: View {
             .padding(.bottom, PageMetrics.inset)
         }
         .pageHeader(PageTitle("History") {
-                Dropdown("Show replies from", selection: $tool,
-                         options: [("All tools", Tool?.none)] + Tool.allCases.map { ($0.name, Tool?.some($0)) })
-                .fixedSize()
+                // One session shows as a chip in the tool menu's place: the session already says
+                // which tool. Its ✕ goes back to every session.
+                if let session {
+                    SessionChip(session: session) { self.session = nil }
+                } else {
+                    Dropdown("Show replies from", selection: $tool,
+                             options: [("All tools", Tool?.none)] + Tool.allCases.map { ($0.name, Tool?.some($0)) })
+                    .fixedSize()
+                }
                 SearchField("Search replies", text: $search)
                 // Straight away, with an undo, rather than a confirmation sheet: the sheet was slow
                 // to appear (0.6-1.3 s) and stood between you and something you can take back.
-                Button("Clear", action: clear)
-                    .buttonStyle(.readback(.destructive))
-                    .disabled(replies.all.isEmpty)
-                    .help("Remove every saved reply. You can undo it for a few seconds.")
+                // Hidden while one session shows, where it would read as "clear this session"
+                // (owner approved, 2026-11-26).
+                if session == nil {
+                    Button("Clear", action: clear)
+                        .buttonStyle(.readback(.destructive))
+                        .disabled(replies.all.isEmpty)
+                        .help("Remove every saved reply. You can undo it for a few seconds.")
+                }
         })
         // One scroll view for every state, so the page keeps its shape with replies, none, or
         // none that match.
@@ -218,21 +234,16 @@ struct HistoryPage: View {
         cleared = []
     }
 
-    private var query: String { search.trimmingCharacters(in: .whitespaces) }
+    private var filter: ReplyFilter { ReplyFilter(session: session?.id, tool: tool, query: search) }
 
     private var noMatchTitle: String {
-        if !query.isEmpty { return "No replies match \u{201C}\(query)\u{201D}" }
+        if !filter.words.isEmpty { return "No replies match \u{201C}\(filter.words)\u{201D}" }
+        if let session { return "No replies from \(session.project)" }
         if let tool { return "No replies from \(tool.name)" }
         return "Nothing here"
     }
 
-    private var filtered: [Reply] {
-        let query = query.lowercased()
-        return replies.all.filter { reply in
-            (tool == nil || reply.request.tool == tool)
-                && (query.isEmpty || reply.text.lowercased().contains(query) || reply.title.lowercased().contains(query))
-        }
-    }
+    private var filtered: [Reply] { replies.all.filter(filter.matches) }
 
     private var days: [(day: Date, title: String, replies: [Reply])] {
         let calendar = Calendar.current
@@ -244,6 +255,59 @@ struct HistoryPage: View {
             else { title = day.formatted(.dateTime.weekday(.wide).day().month(.wide)) }
             return (day, title, grouped[day] ?? [])
         }
+    }
+}
+
+/// The session History is showing: its tool mark, project and tool, and an ✕ back to every
+/// session. A 34 pt plate like Home's setup chips (7 pt before the 20 pt mark), its edge a step
+/// stronger because it's a choice that's in force. As the mockup the owner approved, 2026-11-26.
+private struct SessionChip: View {
+    let session: SessionSummary
+    let showEverySession: () -> Void
+    @State private var hovering = false
+    @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: ControlMetrics.radius, style: .continuous)
+        let close = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        HStack(spacing: 8) {
+            ToolMark(tool: session.tool, size: 20)
+            // In a narrow window the tool's name goes first, then the project name shortens.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Text(session.project)
+                    Text(session.tool?.name ?? "Agent").foregroundStyle(.secondary)
+                }
+                .fixedSize()
+                Text(session.project).truncationMode(.tail)
+            }
+            Button(action: showEverySession) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(hovering ? .primary : .secondary)
+                    .frame(width: 24, height: 24)
+                    .background(hovering ? ControlMetrics.hoverFill(scheme) : .clear, in: close)
+                    .contentShape(close)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .focused($focused)
+            .keyboardFocusRing(focused, close)
+            .onHover { hovering = $0 }
+            .help("Show every session")
+            .accessibilityLabel("Show every session")
+        }
+        .font(.system(size: 13))
+        .lineLimit(1)
+        // The ✕'s 24 pt square sits 5 pt from the edge, the same as above and below it.
+        .padding(.leading, 7)
+        .padding(.trailing, (ControlMetrics.height - 24) / 2)
+        .frame(height: ControlMetrics.height)
+        .background(ControlMetrics.fill(scheme), in: shape)
+        .overlay { Hairline(shape, ControlMetrics.hoverEdge(scheme)) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Showing \(session.project), \(session.tool?.name ?? "Agent")")
     }
 }
 
