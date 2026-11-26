@@ -12,7 +12,7 @@ Final run on `fix/steady-download-numbers`: 166 XCTest cases (one opt-in skip), 
 |---|---|---|---|---|---|---|
 | P1-1 | Cancel deletes model data that was there before the download | Real | Cancel takes back only what that download added | none | 00d1b82 | `ModelCacheTests.cancellingADownloadKeepsWhatWasThereBefore`: with the old whole-model removal, the older revision's weights were gone and 5,806 bytes freed; after, they stay, 1,600 freed, refs/main back to the old commit. Two more cases: a first download goes completely, a file another model links to stays |
 | P1-2 | Two turns that both say "Done." become one History row | Real | A reply from an earlier turn never stands in for this turn's | `received()` stamped rows with the real clock, not the queue's `now` | 238b9f3 | `DeepReviewQueueTests.testTwoTurnsSayingTheSameThingAreTwoReplies`: 1 row before, 2 after, each with its own time |
-| P1-3 | `/command` has no local caller authentication | Owner | | the base already had the same on `/session`, `/speak`, `/replay` | none | Options are in the hand-off |
+| P1-3 | `/command` has no local caller authentication | Owner: documented, token later | | the base already had the same on `/session`, `/speak`, `/replay` | ae99e4b | The owner kept 0.5 token-free on 2026-11-26. The trust model is in PRODUCT.md (*Secure*) and AGENTS.md; the token is an open question there, due before talk back |
 | P1-4 | A download that can't open its log stays on screen with nothing to cancel | Real | Every announced download ends on every path | the step failing to launch ended the row without a failure, so there was no Try again | 00d1b82 | App only. The log is opened before the download is announced; both failures now end like a nonzero exit. Built, not run |
 | P1-5 | The player can cancel a different voice's download | Real | The player shows and cancels only its own voice's download | none (Voices' install row only shows progress; its Cancel stops the install) | ba71b64 | App only. Built, not run |
 | P1-6 | A waiting reply can be trimmed out of History before it speaks | Real | The reply being read stays in History until it has an outcome | none | 238b9f3 | `testTheReplyBeingReadIsntTrimmedBeforeItSpeaks`: gone and not restorable before; kept after. `ReplyHistoryCapTests.testPlayingThroughABacklogDropsTheOldestFirst` asserted the bug and was changed, with the reason in it |
@@ -46,7 +46,7 @@ Pre-existing and left alone: HTTP 202 before History is on disk, exact Codex has
 
 | ID | Claim | Verdict | Note |
 |---|---|---|---|
-| P3-1 | The draft is arm64-only while the docs promise an Intel fallback | Owner | Pre-existing in 0.4.0. Either a universal build or Apple silicon in the stated requirements |
+| P3-1 | The draft is arm64-only while the docs promise an Intel fallback | Owner: universal build | Pre-existing in 0.4.0. 88835e3 builds the app and CLI for arm64 and x86_64 (uv stays arm64: the engine is Apple silicon only). Built and signature-checked; the Intel slice hasn't run, since there's no Rosetta or Intel Mac here |
 | P3-2 | #3 carries #1 and #2's blockers | Follows #1 and #2 | `release/0.5.0` has to move to the new #2 head, and the draft release has to be rebuilt from it |
 
 ## Fix review
