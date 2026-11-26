@@ -53,7 +53,7 @@ Music playing while it reads? Switch on Reading → "Lower other sounds while re
 
 When several agents finish at once, the replies queue up instead of talking over each other: the player shows **+2** for two waiting, and the next one starts when the current one ends. Click the title in the player to see the list and jump to any of them. (Prefer being interrupted? Reading → "Switch to it".)
 
-Open Readback from Applications to get its window: **Home** shows your recent replies and a few numbers, **History** keeps the last 50 replies (search them, filter by tool, click to hear one again, right-click to copy or remove), and **Voices**, **Reading** and **Connections** hold the settings.
+Open Readback from Applications to get its window: **Home** shows what's reading and what's next, your recent sessions (click one to see its latest replies, and **See all** to see the rest of that session in History), and whether your tools are set up. **History** keeps the last 50 replies (search them, filter by tool, click to hear one again, right-click to copy or remove), and **Voices**, **Reading** and **Connections** hold the settings.
 
 There's also a command-line tool at `/Applications/Readback.app/Contents/Helpers/readback`. Run it with no arguments to see what it does, for example `readback voice kokoro bm_george` to switch voices, `readback engine install` to install the natural voice from the terminal, or `readback say "hello"`.
 
