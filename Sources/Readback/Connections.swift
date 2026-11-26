@@ -61,25 +61,34 @@ final class Connections: ObservableObject {
         if fresh != rows { rows = fresh }
     }
 
+    /// Told after a connect works, with whether it was a new connection (IntegrationFiles.connect
+    /// reads that just before it changes anything).
+    var connected: ((ToolHome, Bool) -> Void)?
+
     func connect(_ home: ToolHome) {
-        run("connect \(home.title)", home, .connecting) { try $0.connect(home) }
+        run("connect \(home.title)", home, .connecting, { try $0.connect(home) }) { [weak self] isNew in
+            self?.connected?(home, isNew)
+        }
     }
 
     func disconnect(_ home: ToolHome) {
-        run("disconnect \(home.title)", home, .disconnecting) { try $0.disconnect(home) }
+        run("disconnect \(home.title)", home, .disconnecting) { try $0.disconnect(home); return false }
     }
 
     /// Does `change` in the background, logs how it went, and shows a failure on the row. The row
-    /// shows it's busy meanwhile.
-    private func run(_ what: String, _ home: ToolHome, _ action: Action, _ change: @escaping @Sendable (IntegrationFiles) throws -> Void) {
+    /// shows it's busy meanwhile. `then` runs on the main actor once it worked, with what `change` said.
+    private func run(_ what: String, _ home: ToolHome, _ action: Action, _ change: @escaping @Sendable (IntegrationFiles) throws -> Bool,
+                     then: @escaping @MainActor (Bool) -> Void = { _ in }) {
         busy[home] = action
         refresh()
         queue.async { [weak self] in
             var error: String?
             var full: String?
-            do { try change(Self.makeFiles()) } catch let caught { error = "\(caught)"; full = String(reflecting: caught) }
+            var said = false
+            do { said = try change(Self.makeFiles()) } catch let caught { error = "\(caught)"; full = String(reflecting: caught) }
             let failure = error
             let details = full
+            let outcome = said
             Task { @MainActor in
                 guard let self else { return }
                 self.busy[home] = nil
@@ -90,6 +99,7 @@ final class Connections: ObservableObject {
                 }
                 self.actionErrors[home] = failure
                 self.refresh()
+                if failure == nil { then(outcome) }
             }
         }
     }

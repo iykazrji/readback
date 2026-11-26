@@ -56,7 +56,9 @@ See which tools are on this Mac:
 
 Each line says `not installed`, `not connected`, `partly connected` or `connected`. Connect the tools that are installed and not `connected` (connecting a `partly connected` one puts back what's missing).
 
-**Ask first:** "I'll connect Readback to <the tools>. That adds Readback's hooks to their settings (it keeps a backup of each file it changes, and Disconnect in Readback undoes it). OK?"
+**Ask first:** "I'll connect Readback to <the tools>. That adds Readback's hooks to their settings (it keeps a backup of each file it changes, and Disconnect in Readback undoes it), and a tool that wasn't connected yet will have every reply read out loud, unless you'd switched that off for it before. OK?"
+
+When `connect` switches on reading every reply, it prints a line saying so (`Readback reads every <tool> reply out loud. ...`). It does that only when both hold: the tool wasn't connected before this `connect`, and its "read every reply" switch was never set. Repairing or updating a connection, or a tool the person switched on or off before, leaves the switch as it was and prints nothing about it. If they'd rather not hear every reply, run `"$R" auto <claude|codex|opencode> off` after connecting.
 
 ```sh
 "$R" connect claude     # Claude Code
@@ -109,8 +111,8 @@ The person should hear that sentence. If they don't, check the Mac's volume, the
 
 ## 8. Tell the person how to use it
 
-- In a Claude Code session, `/readback:speak on` reads that session's replies out loud, `/readback:speak off` stops, and `/readback:read` reads the last reply again. In a Codex chat they're `/speak on`, `/speak off` and `/read`.
-- To hear every reply from a tool without asking, switch it on in Readback's **Reading** page, or run `"$R" auto <claude|codex|opencode> on`.
+- A tool you just connected for the first time reads every reply out loud, unless it was switched off before. `connect` only mentions a switch it turned on; `"$R" auto <claude|codex|opencode>` with nothing after it prints whether a tool is on now. To stop it, switch the tool off in Readback's **Reading** page, or run `"$R" auto <claude|codex|opencode> off`.
+- With it off, `/readback:speak on` in a Claude Code session reads that session's replies, `/readback:speak off` stops, and `/readback:read` reads the last reply again. In a Codex chat they're `/speak on`, `/speak off` and `/read`.
 - The menu bar icon has **Read last reply**, and opening Readback from Applications shows its window: History, Voices, Reading and Connections.
 
 ## Removing it

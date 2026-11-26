@@ -101,6 +101,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         if let section { navigation.section = section }
         app.runtime.refresh()
         app.connections.refresh()
+        app.prefs.reloadReadingSwitches()
         NSApp.setActivationPolicy(.regular)
         app.panelPolicyFlipped(to: "regular")
         NSApp.activate(ignoringOtherApps: true)

@@ -33,14 +33,18 @@ final class PlayerPanelController {
         self.app = app
         panel = FloatingPanel()
         host = FirstClickHostingView(rootView: PlayerView(reader: app.reader, replies: app.replies, downloads: app.downloads,
+                                                          runtime: app.runtime, prefs: app.prefs,
                                                           onClose: {}, onPlay: { _ in }, onHover: { _ in }, onDrag: { _, _ in }))
         // Rebuild with the real handlers now that self exists.
         host.rootView = PlayerView(
             reader: app.reader,
             replies: app.replies,
             downloads: app.downloads,
+            runtime: app.runtime,
+            prefs: app.prefs,
             onClose: { [weak app] in app?.stopEverything() },
             onCancelDownload: { [weak app] model in app?.cancelDownload(model) },
+            openVoices: { [weak app] in app?.openWindow(.voices) },
             onPlay: { [weak app] reply in app?.play(reply) },
             onHover: { [weak self] in self?.hoverChanged($0) },
             onDrag: { [weak self] translation, ended in self?.dragged(translation, ended: ended) }

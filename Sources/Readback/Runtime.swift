@@ -38,6 +38,54 @@ final class Runtime: ObservableObject {
     /// the pinned packages on Apple silicon. A meter holds short of full until the step ends.
     static let expectedFetchBytes: Int64 = 1_507_504_128   // 1,472,172 KB: Python 54,660 + uv cache 1,417,512
 
+    /// The model the running install ends by loading; nil outside an install (an update loads none).
+    @Published private(set) var installTarget: String?
+
+    /// What Home and the player say about the natural voice, if anything (EngineInstall.nudge).
+    func nudge(for prefs: Preferences) -> EngineInstall.Nudge? {
+        let situation: EngineInstall.Situation
+        switch state {
+        case .unsupported: situation = .unsupported
+        case .notInstalled: situation = .notInstalled
+        case .installing: situation = installTarget == nil ? .updating : .installing
+        case .installed: situation = .installed
+        case .failed: situation = removeFailed ? .removalFailed : .failed
+        }
+        return EngineInstall.nudge(wantsNatural: prefs.engine.needsRuntime, engine: situation)
+    }
+
+    /// The running install as one meter, engine and voice together: the setup sheet and Voices
+    /// both draw this, so the numbers agree wherever the person looks. Nil outside an install.
+    func progress(with downloads: ModelDownloads) -> EngineInstall.Progress? {
+        guard case .installing = state, let model = installTarget else { return nil }
+        let download = downloads.status(for: model)
+        let voice: EngineInstall.VoiceFetch
+        if step != .voice {
+            voice = .pending
+        } else if let download {
+            voice = .downloading(received: download.received)
+        } else if let done = downloads.finished(model, since: voiceStepBegan) {
+            voice = .fetched(done.bytes)
+        } else {
+            voice = voiceWasOnDisk ? .onDisk : .pending
+        }
+        // A download's total is already the larger of the catalog's and what it reported, and a
+        // finished one keeps it through warm-up (a custom model has no catalog size).
+        let done = step == .voice ? downloads.finished(model, since: voiceStepBegan) : nil
+        return EngineInstall.progress(step: step, engineFetched: fetchedBytes, engineTotal: Self.expectedFetchBytes,
+                                      voice: voice, voiceTotal: download?.total ?? done?.total ?? VoiceCatalog.downloadBytes(for: model))
+    }
+
+    /// The install's voice was in the cache when the voice step began (a reinstall).
+    private var voiceWasOnDisk = false
+    /// When the voice step began: only a download finished since then is this install's.
+    private var voiceStepBegan: TimeInterval = .infinity
+
+    /// The engine kind whose model the running install loads, for "Kokoro · downloading".
+    var installingEngine: EngineKind? {
+        installTarget.flatMap { target in EngineKind.allCases.first { $0.model?.id == target } }
+    }
+
     private let paths = ReadbackPaths()
     private let server: VoiceServer
     private var task: Task<Void, Never>?
@@ -64,7 +112,7 @@ final class Runtime: ObservableObject {
     }
 
     /// The last thing that failed was an update, not a fresh install, so Try again updates.
-    private var updateFailed = false
+    private(set) var updateFailed = false
 
     /// Installs the packages an older install is missing into the existing engine. A minute
     /// at most: what's there already is left alone.
@@ -152,10 +200,15 @@ final class Runtime: ObservableObject {
         guard task == nil else { return }
         lastLines = []
         fetchedBytes = 0
+        installTarget = model
+        voiceWasOnDisk = false
+        voiceStepBegan = .infinity
+        // This attempt is an install: a failure now is the install's, not an earlier update's.
+        updateFailed = false
         state = .installing("Starting…")   // so anyone asking right away sees it's under way
         task = Task {
             defer {
-                task = nil; current = nil; meter?.cancel(); meter = nil; step = nil
+                task = nil; current = nil; meter?.cancel(); meter = nil; step = nil; installTarget = nil
                 // A Cancel blocks this model's download only while the install it ended is going.
                 if let model = installingModel { Task { [server] in await server.allowDownload(of: model) } }
                 installingModel = nil
@@ -187,6 +240,9 @@ final class Runtime: ObservableObject {
                     }
                 }
                 fetchedBytes = max(fetchedBytes, Self.expectedFetchBytes)
+                // Asked before the step shows, so the meter never counts a model that isn't there.
+                voiceWasOnDisk = ModelCache().isDownloaded(model, expectedBytes: VoiceCatalog.downloadBytes(for: model))
+                voiceStepBegan = ProcessInfo.processInfo.systemUptime
                 step = .voice
                 state = .installing("Downloading the voice (\(modelSize))…")
                 installingModel = model

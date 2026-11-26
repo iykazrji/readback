@@ -16,7 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     lazy var voiceServer = VoiceServer(downloads: downloads)
     lazy var runtime = Runtime(server: voiceServer)
     lazy var reader = Reader(makeSpeaker: { [unowned self] in self.speaker() })
-    lazy var connections = Connections()
+    lazy var connections: Connections = {
+        let connections = Connections()
+        connections.connected = { [prefs] home, isNew in prefs.connected(home.tool, isNew: isNew) }
+        return connections
+    }()
     lazy var replies = Replies()
     /// Check for updates, from the sidebar's version card. Never runs by itself.
     let updater = Updater()

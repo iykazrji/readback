@@ -19,6 +19,9 @@ struct SetupSheet: View {
     /// Install the engine and Kokoro, the default voice. Ticked unless it's already there.
     @State private var getVoice = true
     @State private var started = false
+    /// Tools that Set up's connections switch "read every reply" on for, known at the click so the
+    /// next steps say so from the start rather than once each connect lands.
+    @State private var turningOn: Set<ToolHome> = []
 
     private var found: [ToolHome] {
         connections.homes.filter { connections.row($0)?.installed == true }
@@ -132,7 +135,7 @@ struct SetupSheet: View {
         let title: String
         let detail: String
         let state: StepState
-        var meter: (fraction: Double, amount: String)?
+        var meter: (fraction: Double?, amount: String)?
     }
 
     private var steps: [Step] {
@@ -183,14 +186,12 @@ struct SetupSheet: View {
             case .voice?: phase = kokoro == nil ? "Loading Kokoro" : "Downloading Kokoro"
             case nil: phase = "Starting"
             }
-            let engine = min(runtime.fetchedBytes, Runtime.expectedFetchBytes)
-            // Kokoro already on disk (a reinstall) counts as fetched once the engine is in.
-            let model = kokoro?.received ?? (runtime.step == .voice ? VoiceCatalog.kokoroBytes : 0)
-            let got = engine + model
-            let fraction = min(Double(got) / Double(Self.voiceTotal), 0.99)
-            let amount = DownloadAmount.text(received: got, total: Self.voiceTotal)
+            // The same meter Voices draws (Runtime.progress), so closing this sheet loses nothing.
+            let progress = runtime.progress(with: downloads)
+                ?? EngineInstall.progress(step: nil, engineFetched: 0, engineTotal: Runtime.expectedFetchBytes,
+                                          voice: .pending, voiceTotal: VoiceCatalog.kokoroBytes)
             return Step(id: "voice", title: "Get the natural voice", detail: "\(phase)…", state: .working,
-                        meter: (fraction, amount))
+                        meter: (progress.fraction, progress.amount))
         case .notInstalled, .unsupported:
             return Step(id: "voice", title: "Get the natural voice", detail: "Waiting to start.", state: .waiting)
         }
@@ -261,15 +262,37 @@ struct SetupSheet: View {
     private var nextSteps: [String] {
         let picked = found.filter(chosen.contains)
         var lines: [String] = []
-        if picked.contains(where: { $0.tool == .claude }) {
-            lines.append("In a new Claude Code session, type /readback:speak on, then ask anything. Readback reads the reply.")
+        // A new connection reads every reply (owner, 2026-11-26), unless the person had switched
+        // that off before, so each line says what this tool will actually do.
+        // While a connect runs, say what it will do; once it's done, the saved switch is the answer,
+        // so a not-new connect never promises reading (review 2026-11-26). A home whose connect
+        // failed is left out of the guidance: Codex and Codex in Orca share one switch, and one
+        // failing mustn't misreport the other (review 2026-11-26, round 3).
+        let failed = { (home: ToolHome) in row(home)?.busy == nil && row(home)?.error != nil }
+        let working = picked.filter { !failed($0) }
+        // The prediction is per home: only a home that's still connecting and was itself new counts.
+        let predicted = { (tool: Tool) in
+            working.contains { $0.tool == tool && row($0)?.busy != nil && turningOn.contains($0) }
         }
-        let codex = picked.filter { $0.tool == .codex }
+        let readsEvery = { (tool: Tool) in
+            working.contains { $0.tool == tool } && (prefs.readsEveryReply(tool) || predicted(tool))
+        }
+        if working.contains(where: { $0.tool == .claude }) {
+            lines.append(readsEvery(.claude)
+                ? "Start a new Claude Code session and ask anything. Readback reads every reply out loud."
+                : "In a new Claude Code session, type /readback:speak on, then ask anything. Readback reads the reply.")
+        }
+        let codex = working.filter { $0.tool == .codex }
         if !codex.isEmpty {
             let approved = codex.allSatisfy { row($0)?.status == .connected }
-            lines.append("In a Codex chat, type /speak on\(approved ? "" : " once you've approved Readback there"). /read reads the last reply again.")
+            let wait = approved ? "" : " once you've approved Readback there"
+            lines.append(readsEvery(.codex)
+                ? "In a Codex chat, ask anything\(wait). Readback reads every reply; /read reads the last one again."
+                : "In a Codex chat, type /speak on\(wait). /read reads the last reply again.")
         }
-        if !picked.isEmpty {
+        if working.contains(where: { readsEvery($0.tool) }) {
+            lines.append("To stop reading every reply, switch it off for a tool in Reading.")
+        } else if !working.isEmpty {
             lines.append("To hear every reply without asking, switch it on for a tool in Reading.")
         }
         return lines
@@ -283,6 +306,12 @@ struct SetupSheet: View {
 
     private func start() {
         for home in found where chosen.contains(home) {
+            // The connect reads the status again before it writes (IntegrationFiles.connect); this
+            // is the same rule from the row, only so the next steps say it from the first frame.
+            let looksNew = row(home)?.status == .notConnected && row(home)?.error == nil
+            if prefs.switches.switchesOn(forNewConnectionOf: home.tool, isNew: looksNew) {
+                turningOn.insert(home)
+            }
             connections.connect(home)
         }
         if voiceOffered {

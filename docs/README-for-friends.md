@@ -41,10 +41,11 @@ Before Readback changes one of those files it keeps the old version beside it, n
 
 ## Use it
 
-Nothing is read out loud until you ask. Three ways to turn it on:
+Connecting a tool switches on reading every reply from it out loud. To stop that, switch the tool off in **Reading** under "Read every reply out loud". If you'd switched a tool off before, connecting it again leaves it off.
+
+With it off, there are quieter ways:
 
 - In a Claude Code session, type `/readback:speak on`. Only that session is read. `/readback:speak off` stops it, and `/readback:read` reads the last reply right away. In a Codex chat the same commands are `/speak on`, `/speak off` and `/read`. Readback answers them itself in both tools, so they never cost you a model reply.
-- In **Reading**, switch on "Read every reply out loud" for a tool.
 - From the menu bar icon, **Read last reply** reads the most recent reply from any connected tool.
 
 The player: **Close** or **Esc** stops it. Sending a new message in the same session stops it too. Drag the player anywhere; it remembers where you put it. A reply that starts reading by itself plays a short **Pop** first and the voice follows a second later, so it doesn't catch you off guard; pick another sound, or none, in Reading → "Sound before reading".

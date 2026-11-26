@@ -450,14 +450,16 @@ actor VoiceServer {
             await downloads.cancelled(model)
             throw SpeechError.downloadCancelled
         }
-        await downloads.ended(model)
         guard status == 0, lines.finished else {
             let reason = lines.failure ?? "it stopped (exit \(status))"
             Log.error("downloading \(model) failed: \(reason)")
+            await downloads.ended(model)
             await downloads.failed(model, reason: reason)
             throw SpeechError.downloadFailed(reason)
         }
         Log.info("downloaded \(model)")
+        // One step from downloading to done, so nothing drawn in between sees neither (review 2026-11-26).
+        await downloads.succeeded(model)
     }
 
     /// nltk downloads into NLTK_DATA only when that folder already exists; otherwise it makes

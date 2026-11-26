@@ -64,12 +64,29 @@ final class Preferences: ObservableObject {
         autoRead = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, switches.readsEveryReply($0)) })
     }
 
-    func readsEveryReply(_ tool: Tool) -> Bool { autoRead[tool] ?? false }
+    /// Read from the saved settings each time, not the published copy: `readback connect` can
+    /// switch it on from another process while the app runs (review 2026-11-26).
+    func readsEveryReply(_ tool: Tool) -> Bool { switches.readsEveryReply(tool) }
+
+    /// Brings the published switches (the Reading page, Home's row) up to the saved settings.
+    /// Called when the window opens and when those pages appear.
+    func reloadReadingSwitches() {
+        let saved = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, switches.readsEveryReply($0)) })
+        if saved != autoRead { autoRead = saved }
+    }
 
     func setReadsEveryReply(_ tool: Tool, _ on: Bool) {
         autoRead[tool] = on
         switches.setReadsEveryReply(tool, on)
         Log.info("auto-read for \(tool.name) is \(on ? "on" : "off")")
+    }
+
+    /// A tool was just connected: a new connection reads every reply, unless the switch was set
+    /// before (ReadingSwitches.applyNewConnection).
+    func connected(_ tool: Tool, isNew: Bool) {
+        guard switches.applyNewConnection(of: tool, isNew: isNew) else { return }
+        autoRead[tool] = true
+        Log.info("auto-read for \(tool.name) is on: a new connection")
     }
 
     func isSessionOn(_ id: String) -> Bool { switches.isSessionOn(id) }

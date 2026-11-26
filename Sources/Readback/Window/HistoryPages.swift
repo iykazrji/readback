@@ -50,7 +50,7 @@ struct HomePage: View {
                 }
                 VStack(alignment: .leading, spacing: Spacing.s) {
                     sectionHeader("Setup") { EmptyView() }
-                    SetupChips(prefs: prefs, runtime: runtime, connections: connections,
+                    SetupChips(prefs: prefs, runtime: runtime, downloads: app.downloads, connections: connections,
                                openConnections: openConnections, openVoices: openVoices)
                 }
             }
@@ -78,7 +78,9 @@ private struct EmptyReplies: View {
 
     var body: some View {
         EmptyCard(title: "No replies yet",
-                  message: "Connect your coding tools, then type /readback:speak on in a Claude Code session or turn on \u{201C}Read every reply\u{201D} in Reading. Replies show up here as they come in.") {
+                  // Connecting a tool switches on reading every reply (owner, 2026-11-26); the
+                  // switches just above show which tools do.
+                  message: "Connect a coding tool and ask it anything. Replies show up here as they come in, and Readback reads them out loud for each tool switched on above.") {
             Button("Open Connections", action: openConnections)
         }
     }

@@ -26,6 +26,7 @@ struct EveryReplyRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .surface()
+        .keepsReadingSwitchesFresh(prefs)
     }
 
     private var title: some View {
@@ -57,6 +58,7 @@ struct EveryReplyRow: View {
 struct SetupChips: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var runtime: Runtime
+    @ObservedObject var downloads: ModelDownloads
     @ObservedObject var connections: Connections
     let openConnections: () -> Void
     let openVoices: () -> Void
@@ -70,11 +72,36 @@ struct SetupChips: View {
         }
     }
 
-    private var voiceChip: some View {
-        let voice = VoiceSummary.of(prefs, runtime)
-        return SetupChip(action: openVoices, help: "Opens Voices", leadsWithMark: false) {
-            Text("Voice").foregroundStyle(.secondary)
-            Text(voice.name.isEmpty ? voice.engine : "\(voice.engine) · \(voice.name)")
+    /// While replies fall back to the macOS voice, the chip asks for the engine the way a tool chip
+    /// asks for what it needs (EngineInstall.nudge; owner, 2026-11-26). All of them open Voices.
+    @ViewBuilder private var voiceChip: some View {
+        switch runtime.nudge(for: prefs) {
+        case .getIt?:
+            SetupChip(action: openVoices, help: "Opens Voices", callToAction: "Get the natural voice", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text("macOS voice for now")
+            }
+        case .downloading?:
+            let progress = runtime.progress(with: downloads)
+            // A percent while the size is known; the amount so far while it isn't (a custom model).
+            let howFar = progress.map { p in p.fraction.map(DownloadAmount.percent) ?? p.amount } ?? "0%"
+            // The model the install loads, not the voice picked since it started (review 2026-11-26).
+            let name = runtime.installingEngine.map { $0.title.components(separatedBy: " (").first ?? $0.title } ?? "Natural voice"
+            SetupChip(action: openVoices, help: "Opens Voices", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text("\(name) · downloading \(howFar)").monospacedDigit()
+            }
+        case .didntFinish?:
+            SetupChip(action: openVoices, help: "Opens Voices", callToAction: "Try again", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text(runtime.updateFailed ? "engine update didn't finish" : "download didn't finish")
+            }
+        case nil:
+            let voice = VoiceSummary.of(prefs, runtime)
+            SetupChip(action: openVoices, help: "Opens Voices", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text(voice.name.isEmpty ? voice.engine : "\(voice.engine) · \(voice.name)")
+            }
         }
     }
 

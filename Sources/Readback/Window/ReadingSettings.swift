@@ -23,7 +23,7 @@ struct ReadingSettings: View {
             } header: {
                 Text("Read every reply out loud")
             } footer: {
-                FormNote("Off by default. In Claude Code you can switch it on for one session with /readback:speak on, and /readback:read reads the last reply. With it off, Read last reply in the menu bar still works.")
+                FormNote("Connecting a tool switches this on, unless you'd set it before. With it off, /readback:speak on reads one session, /readback:read reads the last reply, and Read last reply in the menu bar still works.")
             }
 
             Section {
@@ -94,6 +94,7 @@ struct ReadingSettings: View {
             }
         }
         .formStyle(CardFormStyle())
+        .keepsReadingSwitchesFresh(prefs)
         .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
     }
 
@@ -111,6 +112,20 @@ struct ReadingSettings: View {
         launchAtLogin = SMAppService.mainApp.status == .enabled
         if SMAppService.mainApp.status == .requiresApproval {
             loginError = "macOS needs your OK: System Settings → General → Login Items."
+        }
+    }
+}
+
+extension View {
+    /// While this view shows, picks up a "read every reply" switch that another process changed:
+    /// `readback connect` writes it straight to the saved settings (review 2026-11-26). Such a
+    /// write showed up in the app's UserDefaults within a quarter second when tried on 2026-11-26.
+    func keepsReadingSwitchesFresh(_ prefs: Preferences) -> some View {
+        task {
+            while !Task.isCancelled {
+                prefs.reloadReadingSwitches()
+                try? await Task.sleep(for: .seconds(2))
+            }
         }
     }
 }
