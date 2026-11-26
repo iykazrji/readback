@@ -321,8 +321,18 @@ case "connect", "disconnect":
     let home = ToolHome(tool(args.first))
     let files = integrationFiles()
     do {
+        let before = (try? files.status(home)) ?? .notConnected
         if command == "connect" { try files.connect(home) } else { try files.disconnect(home) }
         print("\(home.title): \(command == "connect" ? "connected" : "disconnected")")
+        // A new connection reads every reply (ReadingSwitches.switchesOnWhenConnecting). A running
+        // app keeps the switch in memory, so it hears it through /auto; else it reads it at launch.
+        if command == "connect", let switches = ReadingSwitches.forCLI(),
+           switches.switchesOnWhenConnecting(home.tool, from: before) {
+            if !isUp() || post("auto", AutoRequest(tool: home.tool, enabled: true))?.status != 200 {
+                switches.setReadsEveryReply(home.tool, true)
+            }
+            print("Readback reads every \(home.tool.name) reply out loud. `readback auto \(home.tool.rawValue) off` stops that.")
+        }
         if command == "connect", (try? files.status(home)) == .waitingForApproval {
             print("\(home.tool.name) runs the plugin's two hooks only after you approve them: Settings > Hooks in the Codex app, or /hooks in the terminal. Quit and reopen the Codex app if it's open.")
         }

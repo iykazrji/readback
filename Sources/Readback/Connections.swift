@@ -61,8 +61,15 @@ final class Connections: ObservableObject {
         if fresh != rows { rows = fresh }
     }
 
+    /// Told after a connect works, with the home's status from just before it.
+    var connected: ((ToolHome, Integrations.Status) -> Void)?
+
     func connect(_ home: ToolHome) {
-        run("connect \(home.title)", home, .connecting) { try $0.connect(home) }
+        // The row as the person saw it when they clicked: refresh() keeps it a few seconds fresh.
+        let before = rows[home]?.status ?? .notConnected
+        run("connect \(home.title)", home, .connecting, { try $0.connect(home) }) { [weak self] in
+            self?.connected?(home, before)
+        }
     }
 
     func disconnect(_ home: ToolHome) {
@@ -70,8 +77,9 @@ final class Connections: ObservableObject {
     }
 
     /// Does `change` in the background, logs how it went, and shows a failure on the row. The row
-    /// shows it's busy meanwhile.
-    private func run(_ what: String, _ home: ToolHome, _ action: Action, _ change: @escaping @Sendable (IntegrationFiles) throws -> Void) {
+    /// shows it's busy meanwhile. `then` runs on the main actor once it worked.
+    private func run(_ what: String, _ home: ToolHome, _ action: Action, _ change: @escaping @Sendable (IntegrationFiles) throws -> Void,
+                     then: @escaping @MainActor () -> Void = {}) {
         busy[home] = action
         refresh()
         queue.async { [weak self] in
@@ -90,6 +98,7 @@ final class Connections: ObservableObject {
                 }
                 self.actionErrors[home] = failure
                 self.refresh()
+                if failure == nil { then() }
             }
         }
     }

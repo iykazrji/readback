@@ -72,6 +72,13 @@ final class Preferences: ObservableObject {
         Log.info("auto-read for \(tool.name) is \(on ? "on" : "off")")
     }
 
+    /// A tool was just connected, from `before`: a new connection reads every reply, unless the
+    /// switch was set before (ReadingSwitches.switchesOnWhenConnecting).
+    func connected(_ tool: Tool, from before: Integrations.Status) {
+        guard switches.switchesOnWhenConnecting(tool, from: before) else { return }
+        setReadsEveryReply(tool, true)
+    }
+
     func isSessionOn(_ id: String) -> Bool { switches.isSessionOn(id) }
 
     func setSession(_ id: String, _ on: Bool) {

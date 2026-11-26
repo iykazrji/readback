@@ -27,6 +27,19 @@ public struct ReadingSwitches {
         defaults.set(on, forKey: Self.everyReplyKey(tool))
     }
 
+    /// Whether "read every reply" was ever set for `tool`, on or off.
+    public func hasSetEveryReply(_ tool: Tool) -> Bool {
+        defaults.object(forKey: Self.everyReplyKey(tool)) != nil
+    }
+
+    /// Whether connecting `tool`, which was `before`, switches "read every reply" on. A new
+    /// connection reads every reply out loud, and the person switches it off in Reading (owner,
+    /// 2026-11-26). Only a new one: putting back a removed hook, an update or moving to this copy
+    /// isn't. And a switch set before stays as it was, so an earlier off wins (owner, 2026-11-26).
+    public func switchesOnWhenConnecting(_ tool: Tool, from before: Integrations.Status) -> Bool {
+        before == .notConnected && !hasSetEveryReply(tool)
+    }
+
     public func isSessionOn(_ id: String) -> Bool {
         sessions.contains(id)
     }

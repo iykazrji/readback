@@ -19,6 +19,9 @@ struct SetupSheet: View {
     /// Install the engine and Kokoro, the default voice. Ticked unless it's already there.
     @State private var getVoice = true
     @State private var started = false
+    /// Tools that Set up's connections switch "read every reply" on for, known at the click so the
+    /// next steps say so from the start rather than once each connect lands.
+    @State private var turningOn: Set<Tool> = []
 
     private var found: [ToolHome] {
         connections.homes.filter { connections.row($0)?.installed == true }
@@ -259,15 +262,25 @@ struct SetupSheet: View {
     private var nextSteps: [String] {
         let picked = found.filter(chosen.contains)
         var lines: [String] = []
+        // A new connection reads every reply (owner, 2026-11-26), unless the person had switched
+        // that off before, so each line says what this tool will actually do.
+        let readsEvery = { (tool: Tool) in prefs.readsEveryReply(tool) || turningOn.contains(tool) }
         if picked.contains(where: { $0.tool == .claude }) {
-            lines.append("In a new Claude Code session, type /readback:speak on, then ask anything. Readback reads the reply.")
+            lines.append(readsEvery(.claude)
+                ? "Start a new Claude Code session and ask anything. Readback reads every reply out loud."
+                : "In a new Claude Code session, type /readback:speak on, then ask anything. Readback reads the reply.")
         }
         let codex = picked.filter { $0.tool == .codex }
         if !codex.isEmpty {
             let approved = codex.allSatisfy { row($0)?.status == .connected }
-            lines.append("In a Codex chat, type /speak on\(approved ? "" : " once you've approved Readback there"). /read reads the last reply again.")
+            let wait = approved ? "" : " once you've approved Readback there"
+            lines.append(readsEvery(.codex)
+                ? "In a Codex chat, ask anything\(wait). Readback reads every reply; /read reads the last one again."
+                : "In a Codex chat, type /speak on\(wait). /read reads the last reply again.")
         }
-        if !picked.isEmpty {
+        if picked.contains(where: { readsEvery($0.tool) }) {
+            lines.append("To stop reading every reply, switch it off for a tool in Reading.")
+        } else if !picked.isEmpty {
             lines.append("To hear every reply without asking, switch it on for a tool in Reading.")
         }
         return lines
@@ -281,6 +294,9 @@ struct SetupSheet: View {
 
     private func start() {
         for home in found where chosen.contains(home) {
+            if prefs.switches.switchesOnWhenConnecting(home.tool, from: row(home)?.status ?? .notConnected) {
+                turningOn.insert(home.tool)
+            }
             connections.connect(home)
         }
         if voiceOffered {
