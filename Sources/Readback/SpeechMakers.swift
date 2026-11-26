@@ -452,7 +452,7 @@ actor VoiceServer {
         if !FileManager.default.fileExists(atPath: logURL.path) {
             FileManager.default.createFile(atPath: logURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
         }
-        chmod(logURL.path, 0o600)   // created 0644 before this version
+        PrivateFiles.narrow(logURL)   // created 0644 before this version
         let handle = try FileHandle(forWritingTo: logURL)
         try handle.seekToEnd()
         return handle
