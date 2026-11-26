@@ -27,7 +27,7 @@ These are the code side of PRODUCT.md's hard lines.
 
 - Readback edits a tool's config the same way every time. It keeps the old file beside it as `<name>.before-readback`, recognises its own entries by the CLI path they run, and Disconnect removes only those entries.
 - Approving hooks in Codex belongs to the person. Readback reads the approval from `config.toml` and never writes it: no `trusted_hash`, no `--dangerously-bypass-hook-trust`.
-- The control server binds to 127.0.0.1 only. The only network traffic is downloads the person asked for (the voice engine and its models) and Check for updates when they click it. Nothing checks by itself.
+- The control server binds to 127.0.0.1 only and has no token (PRODUCT.md, *Secure*: chosen 2026-11-26). `ControlRequest.parse` refuses a request without the server's own Host or a JSON body, which keeps web pages out; keep every route behind it. A route that does more than read, stop and play needs the token first. The only network traffic is downloads the person asked for (the voice engine and its models) and Check for updates when they click it. Nothing checks by itself.
 - Tests run against a temp home: `ReadbackPaths(home:)`, or `READBACK_HOME`. A passed-in home ignores `CODEX_HOME` and `CLAUDE_CONFIG_DIR` on purpose, so a test can never touch real `~/.claude` or `~/.codex` files.
 
 ## Checking a change

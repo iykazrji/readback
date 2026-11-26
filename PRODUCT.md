@@ -25,7 +25,7 @@ No feature crosses these, however good it looks.
 **Safe, secure and resource-efficient.**
 
 - *Safe* means Readback never surprises the person with changes to their tools. Before it edits a tool's config it says what it will do and keeps a backup beside the file (`<name>.before-readback`). Disconnect removes only what Readback added. It asks before any big download. And it never takes a step that belongs to the person: approving hooks in Codex is theirs, and Readback only tells them it's left.
-- *Secure* means Readback doesn't widen what can reach the person's Mac or their agents. The control server listens on 127.0.0.1 only. Readback never weakens a tool's own trust checks.
+- *Secure* means Readback doesn't widen what can reach the person's Mac or their agents. The control server listens on 127.0.0.1 only, and refuses a request without its own Host and a JSON body, so a web page can't reach it. It has no token: a program running as the person can already change their tools' settings, so it's trusted to start and stop readings too. Another account on the same Mac can also reach it, which is the gap a token would close. Chosen by the owner on 2026-11-26 for 0.5, with a token as later work. Readback never weakens a tool's own trust checks.
 - *Resource-efficient* means Readback is close to free while nothing is being read. A loaded voice engine takes 850 MB to 3.5 GB, depending on the model, so it stops after an hour with nothing read (chosen 2026-11-23). Anything that polls or stays loaded has to justify its cost while the app sits idle.
 
 ## Principles
@@ -58,4 +58,4 @@ These are for the owner to settle, and this file should record the answers:
 - Notarization, so a stranger's first launch doesn't need Open Anyway.
 - How smarter listening gets its summaries without breaking on-device only: a local model, or the agent's own words.
 - How audio reaches the phone in "away from the Mac" with no account and no server.
-- Any local process can call the control server today, because it has no token. Is that acceptable as long as it stays bound to 127.0.0.1, or does talk back change the answer once the server can do more than read and stop?
+- A token for the control server. For 0.5 the owner kept the server token-free (2026-11-26, see *Secure*). It's due before the server can do more than read and stop, as talk back would, or if another account on the same Mac matters. Every client sends it: the CLI, the Claude Code mod, and OpenCode through the CLI.
