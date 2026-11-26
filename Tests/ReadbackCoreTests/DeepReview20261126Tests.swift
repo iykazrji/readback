@@ -117,6 +117,46 @@ final class DeepReviewEngineInstalledTests: XCTestCase {
     }
 }
 
+/// P2-2: the copied mod in Application Support is shared by every Claude Code login connected to
+/// Readback. One connected only through CLAUDE_CONFIG_DIR (a work login, AGENT-SETUP.md) gets the
+/// new mod at launch too, though the app only sees ~/.claude, which isn't connected.
+final class DeepReviewSharedModTests: XCTestCase {
+    func testLaunchRefreshesTheCopyWhenOnlyASecondLoginIsConnected() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rb-mod-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let fm = FileManager.default
+        // This version's mod, as the bundle carries it: the 0.3.0 manifest and the command files.
+        let bundled = home.appendingPathComponent("Bundle/ClaudeCodePlugin", isDirectory: true)
+        try fm.createDirectory(at: bundled.appendingPathComponent(".claude-plugin"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: bundled.appendingPathComponent("commands"), withIntermediateDirectories: true)
+        try #"{"name":"readback","version":"0.3.0"}"#.write(to: bundled.appendingPathComponent(".claude-plugin/plugin.json"), atomically: true, encoding: .utf8)
+        try "---\ndescription: Read the last reply aloud now with Readback\n---\n".write(to: bundled.appendingPathComponent("commands/read.md"), atomically: true, encoding: .utf8)
+        // The 0.4 copy, left by connecting the second login: no command files.
+        let paths = ReadbackPaths(home: home)
+        try fm.createDirectory(at: paths.claudePlugin.appendingPathComponent(".claude-plugin"), withIntermediateDirectories: true)
+        try #"{"name":"readback","version":"0.2.0"}"#.write(to: paths.claudePlugin.appendingPathComponent(".claude-plugin/plugin.json"), atomically: true, encoding: .utf8)
+
+        let files = IntegrationFiles(paths: paths, cli: "/Applications/Readback.app/Contents/Helpers/readback", bundledPlugin: bundled, codex: { _, _ in })
+        XCTAssertEqual(try files.status(.claude), .notConnected, "~/.claude itself isn't connected")
+        try files.refreshPlugin()
+        XCTAssertTrue(fm.fileExists(atPath: paths.claudePlugin.appendingPathComponent("commands/read.md").path))
+        XCTAssertEqual(try String(contentsOf: paths.claudePlugin.appendingPathComponent(".claude-plugin/plugin.json"), encoding: .utf8),
+                       #"{"name":"readback","version":"0.3.0"}"#)
+    }
+
+    /// Never connected anywhere: no copy, and launch doesn't make one.
+    func testNoCopyIsMadeWhenNothingWasConnected() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rb-mod-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let bundled = home.appendingPathComponent("Bundle/ClaudeCodePlugin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundled, withIntermediateDirectories: true)
+        try "x".write(to: bundled.appendingPathComponent("a"), atomically: true, encoding: .utf8)
+        let paths = ReadbackPaths(home: home)
+        try IntegrationFiles(paths: paths, cli: "/x/readback", bundledPlugin: bundled, codex: { _, _ in }).refreshPlugin()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.claudePlugin.path))
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)

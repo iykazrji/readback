@@ -94,16 +94,10 @@ final class Connections: ObservableObject {
         }
     }
 
-    /// When Claude Code is connected, refresh the copied mod so it matches this version of the app.
+    /// Brings the copied mod up to this version of the app (IntegrationFiles.refreshPlugin says when).
     func refreshPlugin() {
-        let files = self.files
-        // Incomplete too: a missing or old mod file is exactly what this puts back.
-        switch try? files.status(.claude) {
-        case .connected?, .incomplete?: break
-        default: return
-        }
         do {
-            try files.copyPlugin()
+            try files.refreshPlugin()
         } catch {
             Log.error("couldn't refresh the Claude Code mod: \(error)")
         }
