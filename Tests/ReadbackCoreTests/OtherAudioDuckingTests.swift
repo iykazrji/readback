@@ -59,10 +59,12 @@ import Testing
         #expect(ducking.state == .normal)
     }
 
+    /// Deep review 2026-11-26, P2-3: this expected `.restore`, which brings the sound back but
+    /// keeps the tap for the 60-second linger, with the switch already off. Off lets it go now.
     @Test func switchingOffMidReadingRestoresAtOnce() {
         var ducking = OtherAudioDucking()
         _ = ducking.readingChanged(.playing, switchedOn: true)
-        #expect(ducking.readingChanged(.playing, switchedOn: false) == .restore)
+        #expect(ducking.readingChanged(.playing, switchedOn: false) == .release)
         #expect(ducking.state == .normal)
     }
 

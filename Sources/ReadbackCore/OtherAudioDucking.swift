@@ -33,6 +33,8 @@ public struct OtherAudioDucking: Equatable {
         case restoreAfter(TimeInterval)
         /// Bring it back now.
         case restore
+        /// The switch went off: bring it back and let the tap go now, not after the linger.
+        case release
     }
 
     public enum State: Equatable { case normal, takenOver, lowered }
@@ -44,16 +46,21 @@ public struct OtherAudioDucking: Equatable {
 
     public private(set) var state: State = .normal
     public var isLowered: Bool { state == .lowered }
+    /// Whether the switch was on when last asked. Back to normal isn't the same as the tap gone:
+    /// it lingers after a reading, so switching off has to let it go whatever the state says.
+    private var wasSwitchedOn = false
 
     public init() {}
 
     /// The reader changed phase, or the switch changed.
     public mutating func readingChanged(_ reading: Reading, switchedOn: Bool) -> Step {
         if !switchedOn {
-            guard state != .normal else { return .nothing }
+            guard wasSwitchedOn else { return .nothing }
+            wasSwitchedOn = false
             state = .normal
-            return .restore
+            return .release
         }
+        wasSwitchedOn = true
         switch (reading, state) {
         case (.playing, .lowered):
             return .keepLowered

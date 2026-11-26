@@ -46,8 +46,10 @@ final class OtherAudioLowerer {
     /// sound while a reading prepares, and not when the voice starts.
     func takeOver() {
         letGo?.cancel()
+        // Full, running or not: a reading that starts inside the last fade out (`scheduleLetGo`)
+        // cancels the teardown, and the target would otherwise stay at silence while it prepares.
+        gain.setTarget(1)
         if !running {
-            gain.setTarget(1)
             guard start() else { return }
         }
     }
@@ -66,6 +68,13 @@ final class OtherAudioLowerer {
         guard running else { return }
         gain.setTarget(1)
         scheduleLetGo(after: Self.linger)
+    }
+
+    /// The switch went off: other sound comes back and the tap goes now, after only the short
+    /// fade that keeps it from clicking. The linger is for a run of replies, not for this.
+    func release() {
+        guard running else { return }
+        scheduleLetGo(after: 0)
     }
 
     /// Starts a tap at full volume and lets it go again, so macOS asks for the permission now,

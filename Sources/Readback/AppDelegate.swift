@@ -324,6 +324,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .restore:
             restoreOtherAudio?.cancel()
             otherAudio.restore()
+        case .release:
+            restoreOtherAudio?.cancel()
+            otherAudio.release()
         }
     }
 

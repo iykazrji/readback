@@ -157,6 +157,31 @@ final class DeepReviewSharedModTests: XCTestCase {
     }
 }
 
+/// P2-3: switching "Lower other sounds while reading" off lets the tap go now, not after the
+/// 60-second linger that's only for a run of replies, including when a reading already ended and
+/// the tap is lingering. AppDelegate passes the switch as `prefs.lowerOtherAudio` on every phase.
+final class DeepReviewDuckingTests: XCTestCase {
+    func testSwitchingOffMidReadingLetsTheTapGo() {
+        var ducking = OtherAudioDucking()
+        _ = ducking.readingChanged(.playing, switchedOn: true)
+        XCTAssertEqual(ducking.readingChanged(.playing, switchedOn: false), .release)
+        XCTAssertEqual(ducking.readingChanged(.stopped, switchedOn: false), .nothing, "once")
+    }
+
+    func testSwitchingOffWhileTheTapLingersLetsItGo() {
+        var ducking = OtherAudioDucking()
+        _ = ducking.readingChanged(.playing, switchedOn: true)
+        _ = ducking.readingChanged(.stopped, switchedOn: true)
+        XCTAssertEqual(ducking.restoreDue(.stopped), .restore, "back up; the tap lingers")
+        XCTAssertEqual(ducking.readingChanged(.stopped, switchedOn: false), .release)
+    }
+
+    func testOffAllAlongDoesNothing() {
+        var ducking = OtherAudioDucking()
+        XCTAssertEqual(ducking.readingChanged(.playing, switchedOn: false), .nothing)
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)
