@@ -28,7 +28,8 @@ final class Replies: ObservableObject {
             let aside = file.appendingPathExtension("unreadable-\(stamp)")
             do {
                 try FileManager.default.moveItem(at: file, to: aside)
-                Log.error("couldn't read the reply history (\(error)); moved it to \(aside.path) and started a new one")
+                // Its name, not its path: a path names the person (deep review 2026-11-26, P2-4's class).
+                Log.error("couldn't read the reply history (\(error)); moved it aside as \(aside.lastPathComponent), beside the new one")
             } catch let moveError {
                 keepFileAsIs = true
                 Log.error("couldn't read the reply history (\(error)) or move it aside (\(moveError)); not saving over it")
