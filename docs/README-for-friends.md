@@ -57,6 +57,12 @@ Open Readback from Applications to get its window: **Home** shows what's reading
 
 There's also a command-line tool at `/Applications/Readback.app/Contents/Helpers/readback`. Run it with no arguments to see what it does, for example `readback voice kokoro bm_george` to switch voices, `readback engine install` to install the natural voice from the terminal, or `readback say "hello"`.
 
+## Updating
+
+Click **Check for updates** under the version at the bottom of Readback's sidebar. Readback only looks when you click; it never checks by itself. If there's a newer version, click **Install and relaunch**. Readback downloads it, checks it's the real thing, puts it in place of the old copy and reopens. Your tools stay connected, and Codex doesn't ask you to approve its hooks again. If you've turned on "Lower other sounds", macOS may ask for that permission once more.
+
+If Readback can't replace itself (say it's in a folder it isn't allowed to change), it offers the download page instead. Download the zip and replace the app yourself.
+
 ## Uninstall
 
 1. In **Connections**, click **Disconnect** for each tool.

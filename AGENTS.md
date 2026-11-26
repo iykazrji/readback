@@ -18,6 +18,7 @@ These pieces run in different processes, and some in other people's tools. Nothi
 - **The bundle layout.** `scripts/build-app.sh` builds it, and `ReadbackCore/AppBundle.swift` is how the code finds things in it: `Contents/Helpers/readback`, `Contents/Helpers/uv`, `Resources/ClaudeCodePlugin`, `Resources/CodexPluginAssets`. Change both together.
 - **The Codex plugin.** Bump `CodexPlugin.version` whenever a file in `CodexPlugin.files` changes, because Codex caches one copy per version. Any change to the hooks makes every user approve them again in Codex. So the plugin's files depend on the CLI path and nothing else. Keep them that way.
 - **The Claude Code mod.** It's copied to Application Support only when its bytes differ, because every open Claude Code session reloads the mod, and says so, whenever its files change.
+- **How releases are published.** Check for updates (`ReadbackCore/Updates.swift`) reads GitHub's latest release and expects the tag `v<version>`, an asset named exactly `Readback.zip` (GitHub records its sha256, and the install refuses a zip without one), and `Readback/Readback.app` inside it with bundle id `local.readback` and a newer `CFBundleShortVersionString`. `build-app.sh` makes that zip. Publish anything else and every installed copy's update fails.
 - **Three version numbers, each bumped on its own:** the app (`VERSION` in `build-app.sh`), the Claude Code mod (`.claude-plugin/plugin.json`) and the Codex plugin (`CodexPlugin.version`).
 
 ## Safety rules
@@ -26,7 +27,7 @@ These are the code side of PRODUCT.md's hard lines.
 
 - Readback edits a tool's config the same way every time. It keeps the old file beside it as `<name>.before-readback`, recognises its own entries by the CLI path they run, and Disconnect removes only those entries.
 - Approving hooks in Codex belongs to the person. Readback reads the approval from `config.toml` and never writes it: no `trusted_hash`, no `--dangerously-bypass-hook-trust`.
-- The control server binds to 127.0.0.1 only. The only network traffic is downloads the person asked for (the voice engine and its models).
+- The control server binds to 127.0.0.1 only. The only network traffic is downloads the person asked for (the voice engine and its models) and Check for updates when they click it. Nothing checks by itself.
 - Tests run against a temp home: `ReadbackPaths(home:)`, or `READBACK_HOME`. A passed-in home ignores `CODEX_HOME` and `CLAUDE_CONFIG_DIR` on purpose, so a test can never touch real `~/.claude` or `~/.codex` files.
 
 ## Checking a change

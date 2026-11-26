@@ -61,3 +61,12 @@ The JSON editor keeps every key, its order, numbers and escapes as they were, an
 ## Signing
 
 The build is ad-hoc signed. Without a Developer ID certificate it can't be notarized, so a downloaded copy needs System Settings → Privacy & Security → Open Anyway once. On first launch the app clears the download flag from its own bundle so the hooks can run its CLI.
+
+An ad-hoc signature changes with every build, and macOS ties the audio-capture permission ("lower other sounds") to it. After an update the app asks for that permission once more: silently when the grant still holds, with macOS's prompt when it doesn't.
+
+## Releasing
+
+1. Bump `VERSION` in `scripts/build-app.sh` (and the mod's or the Codex plugin's version if their files changed), then run `./scripts/build-app.sh`.
+2. Make a GitHub release tagged `v<VERSION>` and upload `build/Readback.zip` as `Readback.zip`. Check for updates relies on exactly that: the tag, the asset name, GitHub's sha256 for it, and `Readback/Readback.app` inside (see AGENTS.md).
+
+To try Check for updates without publishing anything, point a test copy at a fake release with `READBACK_UPDATES_URL=file:///path/to/latest.json`. The file has GitHub's shape (`tag_name`, `html_url`, and `assets` with `name`, `size`, `digest` and `browser_download_url`), and the URLs can be `file://` too. The relaunch passes every `READBACK_*` variable through, so the test copy comes back as itself.

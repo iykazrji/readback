@@ -18,7 +18,7 @@ It's public and open source. So the person installing it is a stranger, often wi
 
 No feature crosses these, however good it looks.
 
-**On-device only.** Reply text and audio never leave the person's Mac. Voices run locally: the macOS voices, or Kokoro, MeloTTS, Soprano and Qwen3-TTS through mlx-audio. There are no cloud voices, no telemetry and no crash reporting to a server. The only network traffic is downloads the person asked for, meaning the voice engine and its models.
+**On-device only.** Reply text and audio never leave the person's Mac. Voices run locally: the macOS voices, or Kokoro, MeloTTS, Soprano and Qwen3-TTS through mlx-audio. There are no cloud voices, no telemetry and no crash reporting to a server. The only network traffic is downloads the person asked for, meaning the voice engine and its models, and Check for updates when they click it (chosen 2026-11-26: manual only, no check at launch and no timer).
 
 **No account.** No sign-in, ever, and no server of ours that Readback depends on.
 
