@@ -36,6 +36,12 @@ public struct ReplyQueue: Equatable {
     /// the hook isn't coming (it skipped the reply, Readback wasn't running).
     public static let hookWait: TimeInterval = 15
 
+    /// When each session's latest turn began: its prompt hook's stop. A reply that arrived before
+    /// then is an earlier turn's, even when it says the same words, so /read never takes it for
+    /// this turn's. Every tool sends that stop (Claude Code's UserPromptSubmit, Codex's prompt
+    /// hook, OpenCode's busy event); the mod's /read and /speak run without one.
+    private var turnStarted: [String: Date] = [:]
+
     /// Anything left waiting when the app last quit isn't news any more: it's kept, not queued.
     public init(restoring history: ReplyHistory = ReplyHistory()) {
         self.history = history
@@ -59,7 +65,7 @@ public struct ReplyQueue: Equatable {
             history.update(early.id) { $0.awaitingHookSince = nil }
             return .nothing
         }
-        let reply = Reply(request, state: wanted ? .waiting : .kept)
+        let reply = Reply(request, state: wanted ? .waiting : .kept, received: now)
         history.add(reply)
         guard wanted else { return .nothing }
         // Asked for just now (`readback say`): read it, no warning.
@@ -78,10 +84,11 @@ public struct ReplyQueue: Equatable {
             return newest.map { start($0.id, cue: false) } ?? .nothing
         }
         // The tool's last reply is the session's newest one here, or it never arrived. An older
-        // reply with the same words is another turn. Either way this turn's Stop hook may still
-        // be on its way, and its copy is this one.
+        // reply with the same words, or the newest from before this turn's prompt, is another
+        // turn. Either way this turn's Stop hook may still be on its way, and its copy is this one.
         let id: UUID
-        if let newest, newest.text == asSent.text {
+        let turn = session.flatMap { turnStarted[$0] }
+        if let newest, newest.text == asSent.text, turn.map({ newest.received >= $0 }) ?? true {
             id = newest.id
         } else {
             let reply = Reply(asSent, state: .waiting, received: now)
@@ -111,9 +118,10 @@ public struct ReplyQueue: Equatable {
     /// kept, and its reading stops. Other sessions' replies, a sample and `readback say` carry on.
     /// `newTurn`: a prompt hook's stop. The person started a new turn, so the next Stop hook here
     /// is that turn's reply, not the one /read already played. A Stop button only stops.
-    public mutating func stop(session: String, reading: Reading?, newTurn: Bool = false) -> Step {
+    public mutating func stop(session: String, reading: Reading?, newTurn: Bool = false, now: Date = Date()) -> Step {
         history.markAll(where: { $0.state == .waiting && $0.session == session }, .kept)
         if newTurn {
+            turnStarted[session] = now
             for reply in history.replies where reply.session == session && reply.awaitingHookSince != nil {
                 history.update(reply.id) { $0.awaitingHookSince = nil }
             }
@@ -126,6 +134,7 @@ public struct ReplyQueue: Equatable {
     /// played again from the history; the caller then moves on with `playNext`.
     public mutating func readingFailed(_ id: UUID) {
         if history.reply(id)?.state == .played { history.mark(id, .kept) }
+        if history.beingRead == id { history.beingRead = nil }
     }
 
     /// Close, Esc, the menu's Stop: quiet. What was waiting stays in the history, unplayed.
@@ -143,7 +152,9 @@ public struct ReplyQueue: Equatable {
         }
         var played = reply
         played.state = .played
-        // Past the cap, marking it can drop it from the history; it's still read.
+        // It stays in the history while it's read, even past the cap; the last one read gives way
+        // once this one takes its place.
+        history.beingRead = id
         history.mark(id, .played)
         return .play(played, cue: cue)
     }
