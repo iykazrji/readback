@@ -380,6 +380,16 @@ actor VoiceServer {
     /// Runs `ModelDownloadScript` in the engine's Python and passes its progress to `downloads`.
     private func download(fetching model: String) async throws {
         Log.info("downloading \(model)")
+        // Opened before the download is announced: a log that can't be opened fails it like any
+        // download that stops short, with Try again, rather than leaving a row that never ends.
+        let engineLog: FileHandle
+        do { engineLog = try logHandle() } catch {
+            Log.error("downloading \(model) couldn't start: couldn't open the engine's log: \(error)")
+            await downloads.failed(model, reason: "Readback couldn't open its log file")
+            throw SpeechError.downloadFailed("couldn't open the engine's log")
+        }
+        // What the cache held before, so Cancel takes back only what this download adds.
+        let before = ModelCache().inventory(of: model)
         await downloads.started(model)
         let lines = DownloadLines { [downloads] event in
             if case .progress(let received, let total) = event {
@@ -396,7 +406,7 @@ actor VoiceServer {
         makeNLTKFolder()
         let out = Pipe()
         process.standardOutput = out
-        process.standardError = try logHandle()   // Python's own warnings and tracebacks
+        process.standardError = engineLog   // Python's own warnings and tracebacks
         out.fileHandleForReading.readabilityHandler = { lines.add($0.availableData) }
         downloadProcesses[model] = process
         let status: Int32
@@ -409,16 +419,22 @@ actor VoiceServer {
                 }
             }
         } catch {
+            // The download step couldn't start: the same Try again as one that stopped short.
+            out.fileHandleForReading.readabilityHandler = nil
+            downloadProcesses[model] = nil
+            Log.error("downloading \(model) couldn't start: \(error)")
             await downloads.ended(model)
-            throw error
+            await downloads.failed(model, reason: "the download couldn't start")
+            throw SpeechError.downloadFailed("the download couldn't start")
         }
         out.fileHandleForReading.readabilityHandler = nil
         lines.add(out.fileHandleForReading.readDataToEndOfFile())   // whatever came after the last read
         downloadProcesses[model] = nil
         if cancelled.remove(model) != nil {
-            // Cancelled: nothing half-fetched stays behind to look like a broken download.
+            // Cancelled: nothing half-fetched stays behind to look like a broken download, and
+            // nothing that was there before it started goes.
             do {
-                let freed = try ModelCache().remove(model)
+                let freed = try ModelCache().discardDownload(of: model, since: before)
                 Log.info("cancelled downloading \(model); removed \(freed.formatted(.byteCount(style: .file))) it had fetched")
             } catch {
                 Log.error("cancelled downloading \(model), but couldn't remove what it had fetched: \(error)")

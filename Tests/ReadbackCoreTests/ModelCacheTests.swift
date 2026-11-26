@@ -93,6 +93,63 @@ import Testing
         #expect(fm.fileExists(atPath: hub.appendingPathComponent("models--org--other").path))
     }
 
+    /// Deep review 2026-11-26, P1-1: Cancel takes back what that download added and nothing the
+    /// cache held before it: an older complete revision, the files it links to, where refs/main pointed.
+    @Test func cancellingADownloadKeepsWhatWasThereBefore() throws {
+        let hub = try tempHub()
+        try makeModel(in: hub, files: ["config.json": 100, "model.safetensors": 5_000])
+        let cache = ModelCache(environment: ["HF_HUB_CACHE": hub.path], home: home)
+        let fm = FileManager.default
+        let model = cache.folder(for: "org/voice")
+        let before = cache.inventory(of: "org/voice")
+
+        // The download moves refs/main to a new revision and gets part of the way.
+        try "def456".write(to: model.appendingPathComponent("refs/main"), atomically: true, encoding: .utf8)
+        let newSnapshot = model.appendingPathComponent("snapshots/def456")
+        try fm.createDirectory(at: newSnapshot, withIntermediateDirectories: true)
+        try Data(count: 900).write(to: hub.appendingPathComponent("blobs/aa/s9"))
+        try fm.createSymbolicLink(atPath: model.appendingPathComponent("blobs/b9").path, withDestinationPath: "../../blobs/aa/s9")
+        try fm.createSymbolicLink(atPath: newSnapshot.appendingPathComponent("config.json").path, withDestinationPath: "../../blobs/b9")
+        try Data(count: 700).write(to: model.appendingPathComponent("blobs/x.incomplete"))
+        #expect(!cache.isDownloaded("org/voice"), "the new revision is incomplete")
+
+        let freed = try cache.discardDownload(of: "org/voice", since: before)
+        #expect(freed == 1_600)
+        #expect(fm.fileExists(atPath: hub.appendingPathComponent("blobs/aa/s0").path), "the older revision's files stay")
+        #expect(fm.fileExists(atPath: hub.appendingPathComponent("blobs/aa/s1").path))
+        #expect(!fm.fileExists(atPath: hub.appendingPathComponent("blobs/aa/s9").path), "what it fetched goes")
+        #expect(!fm.fileExists(atPath: newSnapshot.path))
+        #expect(!fm.fileExists(atPath: model.appendingPathComponent("blobs/x.incomplete").path))
+        #expect(try String(contentsOf: model.appendingPathComponent("refs/main"), encoding: .utf8) == "abc123")
+        #expect(cache.isDownloaded("org/voice"), "the older revision still loads")
+    }
+
+    /// A download into an empty cache goes completely, shared-store files only it links to included.
+    @Test func cancellingAFirstDownloadRemovesItAll() throws {
+        let hub = try tempHub()
+        let cache = ModelCache(environment: ["HF_HUB_CACHE": hub.path], home: home)
+        let before = cache.inventory(of: "org/voice")
+        try makeModel(in: hub, files: ["config.json": 100, "model.safetensors": 5_000])
+        try cache.discardDownload(of: "org/voice", since: before)
+        #expect(!FileManager.default.fileExists(atPath: cache.folder(for: "org/voice").path))
+        #expect((try FileManager.default.contentsOfDirectory(atPath: hub.appendingPathComponent("blobs/aa").path)).isEmpty)
+    }
+
+    /// A shared-store file another model links to stays, even when this download linked it too.
+    @Test func cancellingKeepsAFileAnotherModelUses() throws {
+        let hub = try tempHub()
+        let cache = ModelCache(environment: ["HF_HUB_CACHE": hub.path], home: home)
+        let before = cache.inventory(of: "org/voice")
+        try makeModel(in: hub, files: ["config.json": 100, "model.safetensors": 5_000])
+        let other = hub.appendingPathComponent("models--org--other/snapshots/def456")
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: other.appendingPathComponent("model.safetensors").path,
+                                                   withDestinationPath: hub.appendingPathComponent("blobs/aa/s1").path)
+        try cache.discardDownload(of: "org/voice", since: before)
+        #expect(FileManager.default.fileExists(atPath: hub.appendingPathComponent("blobs/aa/s1").path))
+        #expect(!FileManager.default.fileExists(atPath: hub.appendingPathComponent("blobs/aa/s0").path))
+    }
+
     @Test func worksWithoutTheSharedStoreToo() throws {
         let hub = try tempHub()
         try makeModel(in: hub, files: ["config.json": 10, "model.safetensors": 90], sharedStore: false)
