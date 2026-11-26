@@ -57,6 +57,22 @@ final class DeepReviewQueueTests: XCTestCase {
     }
 }
 
+/// P1-7: a 0.4 helper still running against this app (a hook that started before the update,
+/// a second copy on the same port) gets its /read answered. 0.4's Codex prompt hook sent
+/// POST /replay with `{"session": "<id>"}` and JSON headers (0.4 main.swift:62–69, 285).
+final class DeepReviewCompatibilityTests: XCTestCase {
+    private func post(_ path: String, _ body: String) -> Result<ControlRequest, ControlRequest.Refusal> {
+        ControlRequest.parse(HTTPRequest(method: "POST", path: path, headers: ["host": "127.0.0.1:8908", "content-type": "application/json"],
+                                         body: Data(body.utf8)), port: 8908)
+    }
+
+    func testThe04ReplayRouteStillReadsTheLastReply() {
+        XCTAssertEqual(try post("/replay", #"{"session":"c"}"#).get(), .replay(session: "c"))
+        guard case .failure(let refusal) = post("/replay", "{}") else { return XCTFail("a replay names its session") }
+        XCTAssertEqual(refusal.status, 400)
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)

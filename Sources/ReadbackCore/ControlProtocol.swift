@@ -210,6 +210,9 @@ public enum ControlRequest: Equatable {
     case auto(AutoRequest)
     case voice(VoiceRequest)
     case engine(EngineAction?)
+    /// 0.4's /read from Codex: the session's last reply now. Answered with `{"played": Bool}`, as
+    /// 0.4 expects, for a 0.4 helper still running against this app. /command replaced it.
+    case replay(session: String)
 
     public struct Refusal: Error, Equatable {
         public let status: Int
@@ -268,6 +271,11 @@ public enum ControlRequest: Equatable {
                               if command.command == .speak, command.session == nil { throw NoSession() }
                               return .command(command)
                           }),
+        "/replay": Route(method: "POST", expects: #"expected {"session":"<id>"}"#,
+                         parse: { body in
+                             guard let session = try decode(body, orEmpty: StopRequest(session: nil)).session, !session.isEmpty else { throw NoSession() }
+                             return .replay(session: session)
+                         }),
         "/session": Route(method: "POST", expects: #"expected {"session":"<id>","enabled":true}"#,
                           parse: { .session(try decode($0)) }),
         "/auto": Route(method: "POST", expects: #"expected {"tool":"claude|codex|opencode","enabled":true}"#,
@@ -283,6 +291,10 @@ public enum ControlRequest: Equatable {
 
 /// What Readback answers when someone types /speak or /read, the same in every tool.
 public enum CommandAnswer {
+    /// /command answered 404: the Readback that's running predates it (the app was replaced while
+    /// it ran), and only reopening it brings the two back in step.
+    public static let appIsOlder = "The Readback that's running is an older version than this one. Quit Readback from the menu bar and open it again."
+
     public static func speak(asked: Bool?, isOn: Bool, everyReply: Bool, tool: Tool) -> String {
         let here = "this \(tool.conversation)"
         if asked == nil, everyReply {
