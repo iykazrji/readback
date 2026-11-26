@@ -56,7 +56,9 @@ See which tools are on this Mac:
 
 Each line says `not installed`, `not connected`, `partly connected` or `connected`. Connect the tools that are installed and not `connected` (connecting a `partly connected` one puts back what's missing).
 
-**Ask first:** "I'll connect Readback to <the tools>. That adds Readback's hooks to their settings (it keeps a backup of each file it changes, and Disconnect in Readback undoes it). OK?"
+**Ask first:** "I'll connect Readback to <the tools>. That adds Readback's hooks to their settings (it keeps a backup of each file it changes, and Disconnect in Readback undoes it), and Readback will read every reply from them out loud until you switch that off. OK?"
+
+A new connection switches on reading every reply for that tool and prints a line saying so (`Readback reads every <tool> reply out loud. ...`). A tool the person had switched off before stays off. If they'd rather not hear every reply, run `"$R" auto <claude|codex|opencode> off` after connecting.
 
 ```sh
 "$R" connect claude     # Claude Code
@@ -109,8 +111,8 @@ The person should hear that sentence. If they don't, check the Mac's volume, the
 
 ## 8. Tell the person how to use it
 
-- In a Claude Code session, `/readback:speak on` reads that session's replies out loud, `/readback:speak off` stops, and `/readback:read` reads the last reply again. In a Codex chat they're `/speak on`, `/speak off` and `/read`.
-- To hear every reply from a tool without asking, switch it on in Readback's **Reading** page, or run `"$R" auto <claude|codex|opencode> on`.
+- Every reply from a connected tool is read out loud. To stop that, switch the tool off in Readback's **Reading** page, or run `"$R" auto <claude|codex|opencode> off`.
+- With it off, `/readback:speak on` in a Claude Code session reads that session's replies, `/readback:speak off` stops, and `/readback:read` reads the last reply again. In a Codex chat they're `/speak on`, `/speak off` and `/read`.
 - The menu bar icon has **Read last reply**, and opening Readback from Applications shows its window: History, Voices, Reading and Connections.
 
 ## Removing it

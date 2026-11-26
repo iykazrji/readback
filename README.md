@@ -20,8 +20,8 @@ It downloads the app, connects the tools it finds, and tells you the one step on
 
 ## Use it
 
-- In a Claude Code session, type `/readback:speak on` to hear that session's replies, `/readback:speak off` to stop, and `/readback:read` to hear the last reply again. In a Codex chat, it's `/speak on`, `/speak off` and `/read`.
-- Or switch on "Read every reply out loud" for a tool in Readback's **Reading** page.
+- Once a tool is connected, Readback reads every reply from it out loud. Switch that off for a tool in Readback's **Reading** page.
+- With it off, type `/readback:speak on` in a Claude Code session to hear that session's replies, `/readback:speak off` to stop, and `/readback:read` to hear the last reply again. In a Codex chat, it's `/speak on`, `/speak off` and `/read`.
 - The menu bar icon's **Read last reply** works from anywhere.
 
 ## Building it
