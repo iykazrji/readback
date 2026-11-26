@@ -53,7 +53,7 @@ The on-device engine lives in `~/Library/Application Support/Readback/runtime`: 
 ```
 swift test                                   # core logic
 claude plugin test integrations/claude-code/readback
-./scripts/build-app.sh                       # needs uv on PATH (it's copied into the app)
+./scripts/build-app.sh                       # needs uv on PATH (it's copied into the app); the app and CLI are universal (arm64 and x86_64), uv isn't, since the engine it installs is Apple silicon only
 ```
 
 The JSON editor keeps every key, its order, numbers and escapes as they were, and writes the 2-space layout Claude Code and Codex use. A file Readback has nothing to change in is never rewritten. A file in another layout (compact, tabs) is rewritten in that 2-space layout the first time Readback edits it. `READBACK_ROUNDTRIP_FILES="a.json:b.json" swift test --filter RoundTrip` checks, read-only, that real config files in that layout come back byte for byte.

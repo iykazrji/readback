@@ -16,14 +16,25 @@ BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 UV="${UV:-$(command -v uv || true)}"
 [ -x "$UV" ] || { echo "uv not found: install it or set UV=/path/to/uv" >&2; exit 1; }
 
-swift build -c release --product Readback
-swift build -c release --product readback-cli
+# Universal: Apple silicon and Intel. Intel Macs get the macOS voices; the on-device engine needs
+# Apple silicon (Runtime reports "unsupported" there), so uv, which only installs that engine, stays
+# as it comes. Chosen by the owner on 2026-11-26, after the 0.5 review found the docs promising an
+# Intel fallback that the arm64-only 0.4 zip couldn't give.
+ARCHS=(--arch arm64 --arch x86_64)
+swift build -c release "${ARCHS[@]}" --product Readback
+swift build -c release "${ARCHS[@]}" --product readback-cli
+BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)"
 
 APP=build/Readback.app
 rm -rf "$APP" build/Readback.zip
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
-cp .build/release/Readback "$APP/Contents/MacOS/Readback"
-cp .build/release/readback-cli "$APP/Contents/Helpers/readback"
+cp "$BIN/Readback" "$APP/Contents/MacOS/Readback"
+cp "$BIN/readback-cli" "$APP/Contents/Helpers/readback"
+for binary in "$APP/Contents/MacOS/Readback" "$APP/Contents/Helpers/readback"; do
+  for arch in arm64 x86_64; do
+    lipo "$binary" -verify_arch "$arch" || { echo "$binary has no $arch slice" >&2; exit 1; }
+  done
+done
 cp "$UV" "$APP/Contents/Helpers/uv"
 cp Resources/ThirdPartyNotices.txt "$APP/Contents/Resources/"
 
