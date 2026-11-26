@@ -90,6 +90,33 @@ final class DeepReviewOwnCommandTests: XCTestCase {
     }
 }
 
+/// P2-1: "the engine is installed" has one meaning, its receipt and its server both there. A retry
+/// after the voice step failed resumes at the voice step (Runtime.install), so it never clears an
+/// environment that works; VoiceServer and Runtime ask the same question.
+final class DeepReviewEngineInstalledTests: XCTestCase {
+    func testInstalledMeansTheReceiptAndTheServer() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rb-engine-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = ReadbackPaths(home: home)
+        let fm = FileManager.default
+        XCTAssertFalse(paths.engineIsInstalled)
+        try fm.createDirectory(at: paths.voiceServer.deletingLastPathComponent(), withIntermediateDirectories: true)
+        fm.createFile(atPath: paths.voiceServer.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        XCTAssertFalse(paths.engineIsInstalled, "a server without its receipt is an install cut short")
+        try Data("{}".utf8).write(to: paths.runtimeReceipt)
+        XCTAssertTrue(paths.engineIsInstalled)
+        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: paths.voiceServer.path)
+        XCTAssertFalse(paths.engineIsInstalled, "a server that can't run")
+    }
+
+    /// The step a retry starts at: past the engine once it's installed, so `uv venv --clear` only
+    /// ever runs over an environment that was never finished.
+    func testARetryAfterTheVoiceStepStartsThere() {
+        XCTAssertEqual(EngineInstall.firstStep(engineInstalled: true), .voice)
+        XCTAssertEqual(EngineInstall.firstStep(engineInstalled: false), .python)
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)
