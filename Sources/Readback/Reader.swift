@@ -26,6 +26,9 @@ final class Reader: ObservableObject {
     @Published private(set) var owner: String?
     /// The history entry being read, so the list can mark it.
     @Published private(set) var replyID: UUID?
+    /// The model this reading's voice downloads before it speaks; nil for the macOS voice. Another
+    /// model's download (one started from Voices) isn't this reading's to show or cancel.
+    @Published private(set) var voiceModel: String?
     /// While waiting for a sentence's audio ("preparing"): whether it plays or waits paused once
     /// it's ready. The play button flips it, so a pause or a seek made while waiting holds.
     @Published private(set) var startsPlaying = true
@@ -89,6 +92,7 @@ final class Reader: ObservableObject {
         pendingCue = (cueSound?.isEmpty == false) ? cueSound : nil
 
         let speaker = makeSpeaker()
+        voiceModel = speaker.downloadModel
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("readback-\(run.uuidString)", isDirectory: true)
         workDir = dir
         generation = Task {
@@ -139,6 +143,7 @@ final class Reader: ObservableObject {
         durations = [:]
         run = UUID()
         owner = nil
+        voiceModel = nil
         replyID = nil
         pendingOffset = 0
         startsPlaying = true

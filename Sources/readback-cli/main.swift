@@ -214,7 +214,9 @@ case "read":
     let source = payload.source.flatMap(Tool.init(source:)) ?? .claude
     guard ensureApp() else { fail("Readback isn't running and couldn't be started") }
     let asked = CommandRequest(command: .read, tool: source, session: payload.session, text: text, cwd: payload.cwd)
-    guard let answer = post("command", asked)?.decode(CommandReply.self) else { fail("Readback didn't take it (see ~/Library/Logs/Readback/cli.log)") }
+    let response = post("command", asked)
+    if response?.status == 404 { fail(CommandAnswer.appIsOlder) }
+    guard let answer = response?.decode(CommandReply.self) else { fail("Readback didn't take it (see ~/Library/Logs/Readback/cli.log)") }
     print(answer.text)
 
 case "say":
@@ -255,7 +257,9 @@ case "prompt":
     // /read: the chat's last reply from its transcript, in case the Stop hook never got it to
     // Readback (it wasn't running then, and nothing asked for the reply to be read).
     if case .read = asked { request.text = payload.finishedTranscriptReply(); request.cwd = payload.cwd }
-    guard let answer = post("command", request)?.decode(CommandReply.self) else {
+    let response = post("command", request)
+    if response?.status == 404 { blockPrompt(CommandAnswer.appIsOlder) }
+    guard let answer = response?.decode(CommandReply.self) else {
         blockPrompt("Readback didn't answer. See ~/Library/Logs/Readback.")
     }
     blockPrompt(answer.text)

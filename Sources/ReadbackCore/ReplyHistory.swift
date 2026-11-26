@@ -52,11 +52,16 @@ public struct Reply: Codable, Identifiable, Equatable {
     }
 }
 
-/// Recent replies, newest first, capped. Replies still waiting to be read are never dropped
-/// to make room; the oldest finished ones go first.
+/// Recent replies, newest first, capped. Replies still waiting to be read, and the one being
+/// read, are never dropped to make room; the oldest finished ones go first.
 public struct ReplyHistory: Codable, Equatable {
     public private(set) var replies: [Reply] = []
     public var limit: Int
+    /// The reply being read. It stays while it's read, even past the cap, so a reading that fails
+    /// before it's heard can keep it to play again. Not saved: after a relaunch nothing is reading.
+    public var beingRead: UUID?
+
+    private enum CodingKeys: String, CodingKey { case replies, limit }
 
     public init(limit: Int = 50) {
         self.limit = limit
@@ -116,9 +121,9 @@ public struct ReplyHistory: Codable, Equatable {
         trim()
     }
 
-    /// Over the limit, the oldest finished replies go; waiting ones never do.
+    /// Over the limit, the oldest finished replies go; waiting ones and the one being read never do.
     private mutating func trim() {
-        while replies.count > limit, let i = replies.lastIndex(where: { $0.state != .waiting }) {
+        while replies.count > limit, let i = replies.lastIndex(where: { $0.state != .waiting && $0.id != beingRead }) {
             replies.remove(at: i)
         }
     }

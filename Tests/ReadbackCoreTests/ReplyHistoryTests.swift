@@ -83,11 +83,17 @@ final class ReplyHistoryCapTests: XCTestCase {
         XCTAssertEqual(ReplyQueue(restoring: backlog().history).history.replies.count, 50)
     }
 
+    /// Deep review 2026-11-26, P1-6: this used to expect r0 gone the moment it started, which left
+    /// a reading that failed before it was heard with nothing to keep. It stays while it's read,
+    /// then gives way as the oldest finished one when the next reply starts.
     func testPlayingThroughABacklogDropsTheOldestFirst() {
         var queue = backlog()
         guard case .play(let first, _) = queue.playNext(reading: nil) else { return XCTFail("nothing played") }
         XCTAssertEqual(first.text, "r0")
-        XCTAssertEqual(queue.history.replies.count, 59, "r0 played and was the oldest finished one")
+        XCTAssertEqual(queue.history.replies.count, 60, "r0 stays while it's read")
+        guard case .play(let second, _) = queue.playNext(reading: nil) else { return XCTFail("nothing played next") }
+        XCTAssertEqual(second.text, "r1")
+        XCTAssertEqual(queue.history.replies.count, 59, "r0 was the oldest finished one")
         XCTAssertNil(queue.history.replies.first(where: { $0.text == "r0" }))
     }
 }

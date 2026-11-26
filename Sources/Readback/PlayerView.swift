@@ -88,7 +88,7 @@ struct PlayerView: View {
             .padding(.top, 14)
 
             Group {
-                if reader.phase == .preparing && reader.progress == 0, let download = downloads.active {
+                if reader.phase == .preparing && reader.progress == 0, let download = downloads.status(for: reader.voiceModel) {
                     // A voice's first download: minutes for Qwen3's 3 GB, so show how far it's got.
                     HStack(spacing: 10) {
                         DotProgress(progress: download.fraction ?? 0, pulsing: download.fraction == nil)

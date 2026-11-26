@@ -396,6 +396,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return HTTPResponse.json(200, ["ok": true])
         case .command(let command):
             return HTTPResponse.json(200, CommandReply(text: answer(command)))
+        case .replay(let session):
+            let step = replies.decide { $0.readLast(session: session) }
+            carryOut(step)
+            if case .play = step { return HTTPResponse.json(200, ["played": true]) }
+            return HTTPResponse.json(200, ["played": false])
         case .session(let body):
             if let enabled = body.enabled { setSession(body.session, enabled) }
             return HTTPResponse.json(200, ["session": body.session, "enabled": prefs.isSessionOn(body.session)])

@@ -48,9 +48,16 @@ public enum PrivateFiles {
             try fm.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             return
         }
-        if let mode = (try? fm.attributesOfItem(atPath: url.path))?[.posixPermissions] as? Int, mode & 0o077 != 0 {
-            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
-        }
+        narrow(url)
+    }
+
+    /// Takes away what the group and others may do, and nothing else: an owner who made a file or
+    /// folder read-only keeps it that way, and a write into it fails as they meant it to. Best
+    /// effort, as above.
+    public static func narrow(_ url: URL) {
+        let fm = FileManager.default
+        guard let mode = (try? fm.attributesOfItem(atPath: url.path))?[.posixPermissions] as? Int, mode & 0o077 != 0 else { return }
+        try? fm.setAttributes([.posixPermissions: mode & 0o700], ofItemAtPath: url.path)
     }
 
     /// Replaces the file in one step. The new copy is private from the moment it exists.
@@ -76,6 +83,12 @@ public enum LogFile {
         let fm = FileManager.default
         try PrivateFiles.makeFolder(file.deletingLastPathComponent())
         guard let handle = FileHandle(forWritingAtPath: file.path) else {
+            // One that's there but can't be opened (made read-only) keeps its lines; it's only
+            // made private.
+            if fm.fileExists(atPath: file.path) {
+                PrivateFiles.narrow(file)
+                throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: file.path])
+            }
             guard fm.createFile(atPath: file.path, contents: Data(line.utf8), attributes: [.posixPermissions: 0o600]) else {
                 throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: file.path])
             }
@@ -83,7 +96,7 @@ public enum LogFile {
         }
         defer { try? handle.close() }
         // Logs from before this version were 0644.
-        chmod(file.path, 0o600)
+        PrivateFiles.narrow(file)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data(line.utf8))
     }
