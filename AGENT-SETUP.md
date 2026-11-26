@@ -111,7 +111,7 @@ The person should hear that sentence. If they don't, check the Mac's volume, the
 
 ## 8. Tell the person how to use it
 
-- Every reply from a connected tool is read out loud. To stop that, switch the tool off in Readback's **Reading** page, or run `"$R" auto <claude|codex|opencode> off`.
+- Connecting a tool switches on reading every reply from it out loud. To stop that, switch the tool off in Readback's **Reading** page, or run `"$R" auto <claude|codex|opencode> off`.
 - With it off, `/readback:speak on` in a Claude Code session reads that session's replies, `/readback:speak off` stops, and `/readback:read` reads the last reply again. In a Codex chat they're `/speak on`, `/speak off` and `/read`.
 - The menu bar icon has **Read last reply**, and opening Readback from Applications shows its window: History, Voices, Reading and Connections.
 

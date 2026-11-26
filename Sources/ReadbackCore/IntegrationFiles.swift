@@ -167,8 +167,14 @@ public struct IntegrationFiles {
         }
     }
 
-    public func connect(_ home: ToolHome) throws {
+    /// Connects `home`, and says whether that was a new connection: its status, read just before
+    /// anything changes, was "not connected". An update, a repair, another copy's connection or a
+    /// status that can't be read (a broken file this connect fixes) isn't new. A new connection
+    /// switches on reading every reply (ReadingSwitches.applyNewConnection).
+    @discardableResult
+    public func connect(_ home: ToolHome) throws -> Bool {
         guard isInstalled(home) else { throw Failure.toolNotInstalled(home.tool, folder(home).path) }
+        let isNew = (try? status(home)) == .notConnected
         switch home {
         case .claude:
             try copyPlugin()
@@ -186,6 +192,7 @@ public struct IntegrationFiles {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Integrations.openCodePlugin(cli: cli).write(to: file, atomically: true, encoding: .utf8)
         }
+        return isNew
     }
 
     public func disconnect(_ home: ToolHome) throws {

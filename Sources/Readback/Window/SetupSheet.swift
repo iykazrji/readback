@@ -135,7 +135,7 @@ struct SetupSheet: View {
         let title: String
         let detail: String
         let state: StepState
-        var meter: (fraction: Double, amount: String)?
+        var meter: (fraction: Double?, amount: String)?
     }
 
     private var steps: [Step] {
@@ -189,7 +189,7 @@ struct SetupSheet: View {
             // The same meter Voices draws (Runtime.progress), so closing this sheet loses nothing.
             let progress = runtime.progress(with: downloads)
                 ?? EngineInstall.progress(step: nil, engineFetched: 0, engineTotal: Runtime.expectedFetchBytes,
-                                          modelReceived: nil, modelTotal: VoiceCatalog.kokoroBytes)
+                                          voice: .pending, voiceTotal: VoiceCatalog.kokoroBytes)
             return Step(id: "voice", title: "Get the natural voice", detail: "\(phase)…", state: .working,
                         meter: (progress.fraction, progress.amount))
         case .notInstalled, .unsupported:
@@ -264,7 +264,12 @@ struct SetupSheet: View {
         var lines: [String] = []
         // A new connection reads every reply (owner, 2026-11-26), unless the person had switched
         // that off before, so each line says what this tool will actually do.
-        let readsEvery = { (tool: Tool) in prefs.readsEveryReply(tool) || turningOn.contains(tool) }
+        // While a connect runs, say what it will do; once it's done (or failed), the saved switch is
+        // the answer, so a failed or not-new connect never promises reading (review 2026-11-26).
+        let connecting = { (tool: Tool) in picked.contains { $0.tool == tool && row($0)?.busy != nil } }
+        let readsEvery = { (tool: Tool) in
+            prefs.readsEveryReply(tool) || (turningOn.contains(tool) && connecting(tool))
+        }
         if picked.contains(where: { $0.tool == .claude }) {
             lines.append(readsEvery(.claude)
                 ? "Start a new Claude Code session and ask anything. Readback reads every reply out loud."
@@ -294,7 +299,10 @@ struct SetupSheet: View {
 
     private func start() {
         for home in found where chosen.contains(home) {
-            if prefs.switches.switchesOnWhenConnecting(home.tool, from: row(home)?.status ?? .notConnected) {
+            // The connect reads the status again before it writes (IntegrationFiles.connect); this
+            // is the same rule from the row, only so the next steps say it from the first frame.
+            let looksNew = row(home)?.status == .notConnected && row(home)?.error == nil
+            if prefs.switches.switchesOn(forNewConnectionOf: home.tool, isNew: looksNew) {
                 turningOn.insert(home.tool)
             }
             connections.connect(home)

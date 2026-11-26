@@ -144,7 +144,9 @@ struct PlayerView: View {
     /// the person hears the flat voice is where they learn there's another (owner, 2026-11-26).
     @ViewBuilder private var voiceNudge: some View {
         let failed: Bool = { if case .failed = reader.phase { return true }; return false }()
-        if !failed, let nudge = runtime.nudge(for: prefs) {
+        // Only for a reading that's actually in the macOS voice: the reader keeps the voice it
+        // started with, and voiceModel is nil for the macOS voice (review 2026-11-26).
+        if !failed, reader.voiceModel == nil, let nudge = runtime.nudge(for: prefs) {
             HStack(spacing: 8) {
                 switch nudge {
                 case .getIt:
@@ -154,8 +156,7 @@ struct PlayerView: View {
                 case .downloading:
                     Text("macOS voice until the natural voice is in")
                     Spacer(minLength: 8)
-                    Text(runtime.progress(with: downloads)?.amount ?? "")
-                        .foregroundStyle(Theme.textActive)
+                    NudgeLink(title: runtime.progress(with: downloads)?.amount ?? "", action: openVoices)
                 case .didntFinish:
                     Text("Reading with the macOS voice")
                     Spacer(minLength: 8)

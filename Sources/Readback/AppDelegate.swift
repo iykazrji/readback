@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     lazy var reader = Reader(makeSpeaker: { [unowned self] in self.speaker() })
     lazy var connections: Connections = {
         let connections = Connections()
-        connections.connected = { [prefs] home, before in prefs.connected(home.tool, from: before) }
+        connections.connected = { [prefs] home, isNew in prefs.connected(home.tool, isNew: isNew) }
         return connections
     }()
     lazy var replies = Replies()

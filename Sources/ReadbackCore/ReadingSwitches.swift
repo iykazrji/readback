@@ -32,12 +32,21 @@ public struct ReadingSwitches {
         defaults.object(forKey: Self.everyReplyKey(tool)) != nil
     }
 
-    /// Whether connecting `tool`, which was `before`, switches "read every reply" on. A new
-    /// connection reads every reply out loud, and the person switches it off in Reading (owner,
-    /// 2026-11-26). Only a new one: putting back a removed hook, an update or moving to this copy
-    /// isn't. And a switch set before stays as it was, so an earlier off wins (owner, 2026-11-26).
-    public func switchesOnWhenConnecting(_ tool: Tool, from before: Integrations.Status) -> Bool {
-        before == .notConnected && !hasSetEveryReply(tool)
+    /// Whether a connection of `tool` switches "read every reply" on. A new connection reads every
+    /// reply out loud, and the person switches it off in Reading (owner, 2026-11-26). `isNew` comes
+    /// from IntegrationFiles.connect: an update, a repair or moving to this copy isn't new. And a
+    /// switch set before stays as it was, so an earlier off wins (owner, 2026-11-26).
+    public func switchesOn(forNewConnectionOf tool: Tool, isNew: Bool) -> Bool {
+        isNew && !hasSetEveryReply(tool)
+    }
+
+    /// Switches it on when `switchesOn(forNewConnectionOf:isNew:)` says so, checked at the moment
+    /// of writing, so an off saved since anyone last looked still wins. True when it switched on.
+    @discardableResult
+    public func applyNewConnection(of tool: Tool, isNew: Bool) -> Bool {
+        guard switchesOn(forNewConnectionOf: tool, isNew: isNew) else { return false }
+        setReadsEveryReply(tool, true)
+        return true
     }
 
     public func isSessionOn(_ id: String) -> Bool {

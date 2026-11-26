@@ -41,7 +41,7 @@ Before Readback changes one of those files it keeps the old version beside it, n
 
 ## Use it
 
-Once you connect a tool, Readback reads every reply from it out loud. To stop that, switch the tool off in **Reading** under "Read every reply out loud". If you'd switched a tool off before, connecting it again leaves it off.
+Connecting a tool switches on reading every reply from it out loud. To stop that, switch the tool off in **Reading** under "Read every reply out loud". If you'd switched a tool off before, connecting it again leaves it off.
 
 With it off, there are quieter ways:
 

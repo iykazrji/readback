@@ -23,7 +23,7 @@ struct ReadingSettings: View {
             } header: {
                 Text("Read every reply out loud")
             } footer: {
-                FormNote("On for a tool once you connect it, unless you'd switched it off before. With it off, /readback:speak on reads one session, /readback:read reads the last reply, and Read last reply in the menu bar still works.")
+                FormNote("Connecting a tool switches this on, unless you'd set it before. With it off, /readback:speak on reads one session, /readback:read reads the last reply, and Read last reply in the menu bar still works.")
             }
 
             Section {

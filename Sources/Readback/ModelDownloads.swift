@@ -47,7 +47,18 @@ final class ModelDownloads: ObservableObject {
     }
 
     func ended(_ model: String) {
+        if let active, active.model == model { lastEnded = active }
         if active?.model == model { active = nil }
+    }
+
+    /// The last download to end, as it stood then. With `failure` it tells a finished download
+    /// apart: the install's meter keeps its bytes while the voice warms up.
+    private var lastEnded: Status?
+
+    /// The bytes a download of `model` came to, if its last one finished (didn't fail or stop).
+    func finished(_ model: String) -> Int64? {
+        guard let lastEnded, lastEnded.model == model, failure?.model != model, active?.model != model else { return nil }
+        return max(lastEnded.received, lastEnded.total ?? 0)
     }
 
     /// The person stopped it: not a failure, so nothing red is left behind.

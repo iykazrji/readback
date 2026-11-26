@@ -81,17 +81,19 @@ struct SetupChips: View {
                 Text("macOS voice for now")
             }
         case .downloading?:
-            let percent = runtime.progress(with: downloads).map { DownloadAmount.percent($0.fraction) } ?? "0%"
-            // The voice being fetched: the one picked, or Kokoro when the install started from the macOS voice.
-            let name = prefs.engine.needsRuntime ? VoiceSummary.of(prefs, runtime).engine : EngineKind.kokoro.title.components(separatedBy: " (").first ?? "Kokoro"
+            let progress = runtime.progress(with: downloads)
+            // A percent while the size is known; the amount so far while it isn't (a custom model).
+            let howFar = progress.map { p in p.fraction.map(DownloadAmount.percent) ?? p.amount } ?? "0%"
+            // The model the install loads, not the voice picked since it started (review 2026-11-26).
+            let name = runtime.installingEngine.map { $0.title.components(separatedBy: " (").first ?? $0.title } ?? "Natural voice"
             SetupChip(action: openVoices, help: "Opens Voices", leadsWithMark: false) {
                 Text("Voice").foregroundStyle(.secondary)
-                Text("\(name) · downloading \(percent)").monospacedDigit()
+                Text("\(name) · downloading \(howFar)").monospacedDigit()
             }
         case .didntFinish?:
             SetupChip(action: openVoices, help: "Opens Voices", callToAction: "Try again", leadsWithMark: false) {
                 Text("Voice").foregroundStyle(.secondary)
-                Text("download didn't finish")
+                Text(runtime.updateFailed ? "engine update didn't finish" : "download didn't finish")
             }
         case nil:
             let voice = VoiceSummary.of(prefs, runtime)

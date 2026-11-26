@@ -59,9 +59,27 @@ final class Runtime: ObservableObject {
     func progress(with downloads: ModelDownloads) -> EngineInstall.Progress? {
         guard case .installing = state, let model = installTarget else { return nil }
         let download = downloads.status(for: model)
+        let voice: EngineInstall.VoiceFetch
+        if step != .voice {
+            voice = .pending
+        } else if let download {
+            voice = .downloading(received: download.received)
+        } else if let bytes = downloads.finished(model) {
+            voice = .fetched(bytes)
+        } else {
+            voice = voiceWasOnDisk ? .onDisk : .pending
+        }
+        // The download's total is already the larger of the catalog's and what it reported.
         return EngineInstall.progress(step: step, engineFetched: fetchedBytes, engineTotal: Self.expectedFetchBytes,
-                                      modelReceived: download?.received,
-                                      modelTotal: VoiceCatalog.downloadBytes(for: model) ?? download?.total ?? 0)
+                                      voice: voice, voiceTotal: download?.total ?? VoiceCatalog.downloadBytes(for: model))
+    }
+
+    /// The install's voice was in the cache when the voice step began (a reinstall).
+    private var voiceWasOnDisk = false
+
+    /// The engine kind whose model the running install loads, for "Kokoro · downloading".
+    var installingEngine: EngineKind? {
+        installTarget.flatMap { target in EngineKind.allCases.first { $0.model?.id == target } }
     }
 
     private let paths = ReadbackPaths()
@@ -90,7 +108,7 @@ final class Runtime: ObservableObject {
     }
 
     /// The last thing that failed was an update, not a fresh install, so Try again updates.
-    private var updateFailed = false
+    private(set) var updateFailed = false
 
     /// Installs the packages an older install is missing into the existing engine. A minute
     /// at most: what's there already is left alone.
@@ -179,6 +197,7 @@ final class Runtime: ObservableObject {
         lastLines = []
         fetchedBytes = 0
         installTarget = model
+        voiceWasOnDisk = false
         state = .installing("Starting…")   // so anyone asking right away sees it's under way
         task = Task {
             defer {
@@ -214,6 +233,8 @@ final class Runtime: ObservableObject {
                     }
                 }
                 fetchedBytes = max(fetchedBytes, Self.expectedFetchBytes)
+                // Asked before the step shows, so the meter never counts a model that isn't there.
+                voiceWasOnDisk = ModelCache().isDownloaded(model, expectedBytes: VoiceCatalog.downloadBytes(for: model))
                 step = .voice
                 state = .installing("Downloading the voice (\(modelSize))…")
                 installingModel = model

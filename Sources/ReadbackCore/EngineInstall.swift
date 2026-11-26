@@ -34,9 +34,10 @@ public enum EngineInstall {
     }
 
     /// What Home's Voice chip and the player say about the natural voice while replies fall
-    /// back to the macOS voice. Without it, someone who skipped the download only hears the flat
-    /// voice and never learns there's another (owner, 2026-11-26). Each opens Voices, where
-    /// Install shows the size first, so nothing big downloads without the person's click.
+    /// back to the macOS voice. Without it, someone whose voice needs the engine but never got it
+    /// only hears the flat voice and never learns why (owner, 2026-11-26). Each opens Voices, where
+    /// Install shows the size first, so nothing big downloads without the person's click. Someone
+    /// who chose the macOS voice, including by unticking it at setup, is never asked (owner, same day).
     public enum Nudge: Equatable {
         /// They want a natural voice and the engine isn't here.
         case getIt
@@ -60,15 +61,31 @@ public enum EngineInstall {
     /// How far a whole install has got, as one meter.
     public struct Progress: Equatable {
         public let received: Int64
-        public let total: Int64
+        /// Nil while the voice's size isn't known (a custom model before its download reports one).
+        public let total: Int64?
 
-        /// 0...1, held just short of full until the install ends.
-        public var fraction: Double {
-            total > 0 ? min(Double(received) / Double(total), 0.99) : 0
+        /// 0...1, held just short of full until the install ends; nil (a meter with no fill
+        /// level) while the total isn't known.
+        public var fraction: Double? {
+            guard let total, total > 0 else { return nil }
+            return min(Double(received) / Double(total), 0.99)
         }
 
-        /// "0.45 of 1.86 GB", one width throughout (DownloadAmount).
+        /// "0.45 of 1.86 GB", one width throughout (DownloadAmount); "1.62 GB" with no total.
         public var amount: String { DownloadAmount.text(received: received, total: total) }
+    }
+
+    /// Where the voice's model is during an install, said outright: "nothing downloading right
+    /// now" alone can't tell a model already on disk from one whose download hasn't started, and
+    /// reading it as on disk sent a fresh install's meter to 99% and back (review 2026-11-26).
+    public enum VoiceFetch: Equatable {
+        /// Not reached yet, or its download hasn't started.
+        case pending
+        /// In the cache before this install got to it.
+        case onDisk
+        case downloading(received: Int64)
+        /// Downloaded by this install; it's warming up now.
+        case fetched(Int64)
     }
 
     /// One meter for the engine's packages and then the voice's model. The setup sheet and Voices
@@ -77,16 +94,21 @@ public enum EngineInstall {
     ///
     /// - engineFetched: what the engine steps have fetched so far, measured on disk.
     /// - engineTotal: what they come to (Runtime's measured figure).
-    /// - modelReceived: the voice's download so far; nil while it isn't downloading.
-    /// - modelTotal: the voice's size; 0 when it isn't known (a custom model).
+    /// - voice: where the voice's model is.
+    /// - voiceTotal: the voice's size, the larger of the catalog's and what its download reported;
+    ///   nil when neither is known.
     public static func progress(step: Step?, engineFetched: Int64, engineTotal: Int64,
-                                modelReceived: Int64?, modelTotal: Int64) -> Progress {
+                                voice: VoiceFetch, voiceTotal: Int64?) -> Progress {
         // At the voice step the engine is in, whether it was fetched now or before (a Try again).
         let engine = step == .voice ? engineTotal : min(max(engineFetched, 0), engineTotal)
-        let modelAll = max(modelTotal, modelReceived ?? 0)
-        // The voice step with nothing downloading: the model was on disk already.
-        let model = modelReceived ?? (step == .voice ? modelAll : 0)
-        return Progress(received: engine + model, total: engineTotal + modelAll)
+        let got: Int64
+        switch voice {
+        case .pending: got = 0
+        case .onDisk: got = voiceTotal ?? 0
+        case .downloading(let received): got = max(received, 0)
+        case .fetched(let bytes): got = max(bytes, voiceTotal ?? 0)
+        }
+        return Progress(received: engine + got, total: voiceTotal.map { engineTotal + max($0, got) })
     }
 }
 

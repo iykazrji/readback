@@ -321,16 +321,13 @@ case "connect", "disconnect":
     let home = ToolHome(tool(args.first))
     let files = integrationFiles()
     do {
-        let before = (try? files.status(home)) ?? .notConnected
-        if command == "connect" { try files.connect(home) } else { try files.disconnect(home) }
+        var isNew = false
+        if command == "connect" { isNew = try files.connect(home) } else { try files.disconnect(home) }
         print("\(home.title): \(command == "connect" ? "connected" : "disconnected")")
-        // A new connection reads every reply (ReadingSwitches.switchesOnWhenConnecting). A running
-        // app keeps the switch in memory, so it hears it through /auto; else it reads it at launch.
-        if command == "connect", let switches = ReadingSwitches.forCLI(),
-           switches.switchesOnWhenConnecting(home.tool, from: before) {
-            if !isUp() || post("auto", AutoRequest(tool: home.tool, enabled: true))?.status != 200 {
-                switches.setReadsEveryReply(home.tool, true)
-            }
+        // A new connection reads every reply (ReadingSwitches.applyNewConnection). Written straight
+        // to this account's settings, never through the port: whatever answers on 8908 may be
+        // another account's Readback (review 2026-11-26). The app reads the switch from there.
+        if isNew, ReadingSwitches.forCLI()?.applyNewConnection(of: home.tool, isNew: true) == true {
             print("Readback reads every \(home.tool.name) reply out loud. `readback auto \(home.tool.rawValue) off` stops that.")
         }
         if command == "connect", (try? files.status(home)) == .waitingForApproval {
