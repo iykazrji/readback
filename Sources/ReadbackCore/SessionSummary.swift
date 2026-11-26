@@ -18,7 +18,7 @@ public struct SessionSummary: Identifiable, Equatable {
 
     /// The `limit` most recent sessions, newest first.
     public static func sessions(from replies: [Reply], limit: Int = 8) -> [SessionSummary] {
-        let groups = Dictionary(grouping: replies, by: key)
+        let groups = Dictionary(grouping: replies, by: { key(of: $0) })
         let summaries = groups.map { id, group -> SessionSummary in
             let sorted = group.sorted { ($0.received, $1.id.uuidString) > ($1.received, $0.id.uuidString) }
             let newest = sorted[0]
@@ -30,7 +30,9 @@ public struct SessionSummary: Identifiable, Equatable {
         return Array(summaries.sorted { ($0.newest.received, $1.id) > ($1.newest.received, $0.id) }.prefix(limit))
     }
 
-    private static func key(_ reply: Reply) -> String {
+    /// The session a reply belongs to, as Home groups it: its `session`, or folder and tool when
+    /// it has none. History's filter uses the same key, so "See all" finds the same replies.
+    public static func key(of reply: Reply) -> String {
         if let session = reply.session, !session.isEmpty { return session }
         return "cwd:\(reply.cwd ?? "")|\(reply.source ?? "")"
     }
