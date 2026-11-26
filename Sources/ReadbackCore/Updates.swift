@@ -138,7 +138,7 @@ public enum CheckFailure: Error, Equatable {
 
 /// Why an install stopped. Every one stops before the swap, or the swap itself failed and put
 /// nothing in place, so the installed copy is as it was.
-public enum InstallFailure: Equatable {
+public enum InstallFailure: Error, Equatable {
     case download(String)
     case noDigest
     case digestMismatch

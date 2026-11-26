@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     lazy var reader = Reader(makeSpeaker: { [unowned self] in self.speaker() })
     lazy var connections = Connections()
     lazy var replies = Replies()
+    /// Check for updates, from the sidebar's version card. Never runs by itself.
+    let updater = Updater()
 
     private var panel: PlayerPanelController?
     private var mainWindow: MainWindowController?
@@ -60,6 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startControlServer()
         connections.refreshPlugin()
         Log.info("Readback \(Bundle.main.version) started")
+        updater.waitingOn = { [unowned self] in
+            let installing: Bool
+            if case .installing = runtime.state { installing = true } else { installing = false }
+            return UpdateWait.of(voiceDownload: downloads.active != nil, engineInstall: installing,
+                                 connecting: connections.rows.values.contains { $0.busy != nil })
+        }
+        updater.afterLaunch(lowerOtherAudio: prefs.lowerOtherAudio) { otherAudio.askPermission() }
 
         reader.$phase
             .removeDuplicates()

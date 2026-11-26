@@ -320,19 +320,9 @@ private struct Sidebar: View {
 
             VStack(spacing: 8) {
                 NowPlayingCard(app: app, reader: reader, prefs: prefs, runtime: app.runtime, showVoices: { selection = .voices })
-                Button {
-                    selection = .about
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("Readback").font(.system(size: 13, weight: .semibold))
-                        Text(Bundle.main.version).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                }
-                .buttonStyle(SidebarTileStyle(isSelected: selection == .about, radius: Radius.sidebarCard))
-                .accessibilityLabel("About Readback")
-                .accessibilityValue(Bundle.main.version)
+                VersionCard(updater: app.updater, downloads: app.downloads, runtime: app.runtime,
+                            connections: app.connections, aboutSelected: selection == .about,
+                            openAbout: { selection = .about })
             }
         }
         .padding(.horizontal, 10)
