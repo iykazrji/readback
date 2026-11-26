@@ -302,11 +302,13 @@ struct VoicesPage: View {
                 Spacer()
                 Button("Cancel") { runtime.cancel() }
             }
-            if let download = downloads.active {
-                // The install's last step is the voice's first download.
-                Meter(fraction: download.fraction)
+            if let progress = runtime.progress(with: downloads) {
+                // Engine and voice as one meter, the setup sheet's numbers: the person who closed
+                // the sheet mid-install sees it still going here (owner, 2026-11-26). An update
+                // loads no voice and keeps the spinner alone.
+                Meter(fraction: progress.fraction)
                 // Under the bar's right end, where the amount's one-width padding doesn't show.
-                Text(download.amount)
+                Text(progress.amount)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)

@@ -38,6 +38,19 @@ final class Runtime: ObservableObject {
     /// the pinned packages on Apple silicon. A meter holds short of full until the step ends.
     static let expectedFetchBytes: Int64 = 1_507_504_128   // 1,472,172 KB: Python 54,660 + uv cache 1,417,512
 
+    /// The model the running install ends by loading; nil outside an install (an update loads none).
+    @Published private(set) var installTarget: String?
+
+    /// The running install as one meter, engine and voice together: the setup sheet and Voices
+    /// both draw this, so the numbers agree wherever the person looks. Nil outside an install.
+    func progress(with downloads: ModelDownloads) -> EngineInstall.Progress? {
+        guard case .installing = state, let model = installTarget else { return nil }
+        let download = downloads.status(for: model)
+        return EngineInstall.progress(step: step, engineFetched: fetchedBytes, engineTotal: Self.expectedFetchBytes,
+                                      modelReceived: download?.received,
+                                      modelTotal: VoiceCatalog.downloadBytes(for: model) ?? download?.total ?? 0)
+    }
+
     private let paths = ReadbackPaths()
     private let server: VoiceServer
     private var task: Task<Void, Never>?
@@ -152,10 +165,11 @@ final class Runtime: ObservableObject {
         guard task == nil else { return }
         lastLines = []
         fetchedBytes = 0
+        installTarget = model
         state = .installing("Starting…")   // so anyone asking right away sees it's under way
         task = Task {
             defer {
-                task = nil; current = nil; meter?.cancel(); meter = nil; step = nil
+                task = nil; current = nil; meter?.cancel(); meter = nil; step = nil; installTarget = nil
                 // A Cancel blocks this model's download only while the install it ended is going.
                 if let model = installingModel { Task { [server] in await server.allowDownload(of: model) } }
                 installingModel = nil

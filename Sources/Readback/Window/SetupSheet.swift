@@ -183,14 +183,12 @@ struct SetupSheet: View {
             case .voice?: phase = kokoro == nil ? "Loading Kokoro" : "Downloading Kokoro"
             case nil: phase = "Starting"
             }
-            let engine = min(runtime.fetchedBytes, Runtime.expectedFetchBytes)
-            // Kokoro already on disk (a reinstall) counts as fetched once the engine is in.
-            let model = kokoro?.received ?? (runtime.step == .voice ? VoiceCatalog.kokoroBytes : 0)
-            let got = engine + model
-            let fraction = min(Double(got) / Double(Self.voiceTotal), 0.99)
-            let amount = DownloadAmount.text(received: got, total: Self.voiceTotal)
+            // The same meter Voices draws (Runtime.progress), so closing this sheet loses nothing.
+            let progress = runtime.progress(with: downloads)
+                ?? EngineInstall.progress(step: nil, engineFetched: 0, engineTotal: Runtime.expectedFetchBytes,
+                                          modelReceived: nil, modelTotal: VoiceCatalog.kokoroBytes)
             return Step(id: "voice", title: "Get the natural voice", detail: "\(phase)…", state: .working,
-                        meter: (fraction, amount))
+                        meter: (progress.fraction, progress.amount))
         case .notInstalled, .unsupported:
             return Step(id: "voice", title: "Get the natural voice", detail: "Waiting to start.", state: .waiting)
         }
