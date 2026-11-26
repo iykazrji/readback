@@ -303,6 +303,35 @@ final class DeepReviewVoicedChunkTests: XCTestCase {
     }
 }
 
+/// Fix review, round 1 (R1-2): the updater reads the new app's slices from its Mach-O header
+/// itself. /usr/bin/lipo is a developer tool: on a Mac without the Command Line Tools it asks to
+/// install them, mid-update.
+final class DeepReviewMachOTests: XCTestCase {
+    private func file(_ bytes: [UInt8]) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("macho-\(UUID())")
+        try Data(bytes + [UInt8](repeating: 0, count: 64)).write(to: url)
+        return url
+    }
+
+    func testReadsAThinAndAUniversalExecutable() throws {
+        // mach_header_64, little-endian: magic 0xfeedfacf, cputype 0x0100000c (arm64).
+        let thin = try file([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01])
+        XCTAssertEqual(Updates.architectures(ofExecutable: thin), ["arm64"])
+        // fat_header, big-endian: magic 0xcafebabe, two fat_arch entries of 20 bytes.
+        let fat = try file([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2,
+                            0x01, 0, 0, 0x07] + [UInt8](repeating: 0, count: 16)
+                            + [0x01, 0, 0, 0x0c] + [UInt8](repeating: 0, count: 16))
+        XCTAssertEqual(Updates.architectures(ofExecutable: fat), ["x86_64", "arm64"])
+        XCTAssertNil(Updates.architectures(ofExecutable: try file(Array("#!/bin/sh\n".utf8))))
+    }
+
+    #if arch(arm64)
+    func testReadsARealExecutable() {
+        XCTAssertEqual(Updates.architectures(ofExecutable: URL(fileURLWithPath: "/bin/ls"))?.contains("arm64"), true)
+    }
+    #endif
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)

@@ -102,7 +102,8 @@ final class Runtime: ObservableObject {
         }
     }
 
-    /// Voices' Try again: an update again if that's what failed, else a fresh install.
+    /// Voices' Try again: an update again if that's what failed, else the install again, which
+    /// starts at the voice when the engine is already in (EngineInstall.firstStep).
     func retry(for prefs: Preferences) {
         if removeFailed { startRemoving() } else if updateFailed { update() } else { install(for: prefs) }
     }

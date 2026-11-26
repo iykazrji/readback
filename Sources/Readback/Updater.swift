@@ -151,9 +151,8 @@ final class Updater: ObservableObject {
 
         let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")) as? [String: Any] ?? [:]
         // Its executable's slices, so a build for another Mac never replaces one that works here.
-        let executable = (info["CFBundleExecutable"] as? String).map { app.appendingPathComponent("Contents/MacOS/\($0)").path }
-        let architectures = executable.flatMap { output("/usr/bin/lipo", ["-archs", $0]) }?
-            .split(whereSeparator: \.isWhitespace).map(String.init) ?? []
+        let executable = (info["CFBundleExecutable"] as? String).map { app.appendingPathComponent("Contents/MacOS/\($0)") }
+        let architectures = executable.flatMap(Updates.architectures(ofExecutable:)) ?? []
         if let failure = Updates.check(newInfo: info, bundleID: Bundle.main.bundleIdentifier ?? "", current: Bundle.main.version,
                                        offered: release.version, architectures: architectures) {
             throw failure
@@ -221,20 +220,6 @@ final class Updater: ObservableObject {
 
     private func cleanUp(_ folder: URL) {
         try? FileManager.default.removeItem(at: folder)
-    }
-
-    /// Runs a tool and returns what it printed, or nil when it failed.
-    nonisolated private static func output(_ tool: String, _ arguments: [String]) -> String? {
-        let process = Process()
-        let out = Pipe()
-        process.executableURL = URL(fileURLWithPath: tool)
-        process.arguments = arguments
-        process.standardOutput = out
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return process.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : nil
     }
 
     /// Runs a tool and returns its exit status, or -1 when it couldn't start.

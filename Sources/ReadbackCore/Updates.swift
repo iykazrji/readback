@@ -118,6 +118,43 @@ public enum Updates {
         return nil
     }
 
+    /// The CPU architectures a Mach-O executable has slices for ("arm64", "x86_64"), read from its
+    /// header; nil when it isn't one. Read here because /usr/bin/lipo is a developer tool: on a Mac
+    /// without the Command Line Tools it asks to install them.
+    public static func architectures(ofExecutable url: URL) -> [String]? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 4096), head.count >= 8 else { return nil }
+        let bytes = [UInt8](head)
+        func big(_ at: Int) -> UInt32? {
+            guard at + 4 <= bytes.count else { return nil }
+            return bytes[at..<at + 4].reduce(0) { $0 << 8 | UInt32($1) }
+        }
+        func little(_ at: Int) -> UInt32? { big(at).map { $0.byteSwapped } }
+        func name(_ cpu: UInt32) -> String {
+            switch cpu {
+            case 0x0100_000c: return "arm64"
+            case 0x0100_0007: return "x86_64"
+            default: return "cpu\(cpu)"
+            }
+        }
+        switch big(0) {
+        case 0xcafe_babe, 0xcafe_babf:   // universal: fat_arch is 20 bytes, fat_arch_64 32
+            let entry = big(0) == 0xcafe_babe ? 20 : 32
+            guard let count = big(4), count > 0, count < 64 else { return nil }
+            var found: [String] = []
+            for i in 0..<Int(count) {
+                guard let cpu = big(8 + i * entry) else { return nil }
+                found.append(name(cpu))
+            }
+            return found
+        case 0xcffa_edfe, 0xcefa_edfe:   // one slice, little-endian on disk
+            return little(4).map { [name($0)] }
+        default:
+            return nil
+        }
+    }
+
     /// "15.0" or "15.2.1" against the running macOS.
     static func runs(on system: OperatingSystemVersion, minimum: String) -> Bool {
         let parts = minimum.split(separator: ".").map { Int($0) ?? 0 } + [0, 0, 0]
