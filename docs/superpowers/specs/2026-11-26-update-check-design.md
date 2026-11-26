@@ -55,6 +55,13 @@ Install, in order, stopping at the first failure:
 
 After it reopens, the new version clears its own quarantine flag as it already does, re-copies the Claude Code mod only if its bytes changed, and the hooks keep working because the CLI path is the same.
 
+## Settled after the builder check (agent's calls, for the owner to check)
+
+- **Install waits for other work.** While a voice downloads, the engine installs, or a Connect is in progress, the Available card keeps "Install and relaunch" but disables it, with one line saying why ("Install it once the voice download has finished."). Quitting then would throw away a download the person asked for, or half-write a tool's config.
+- **The audio permission after an update.** It's asked for only when the switch is flipped, so after an update it could fail silently rather than ask again. Before quitting, the updater notes the version it's leaving. On the next launch, if that note is there and "lower other sounds" is on, Readback runs its permission ask once. If the old grant still holds, that's silent (a 1.5 s tap at full volume). If not, macOS asks. Either way the switch keeps working.
+- **Waiting replies** become kept on launch, which is what launch already does. They stay in History.
+- **The four install failures without owner copy** were drafted in the same voice: "The download didn't have Readback in it.", "The download held a different app." / "The download wasn't a newer Readback.", "The app in the download failed its signature check.", "Readback couldn't put the new copy in place: <reason>." Each ends "Readback left your copy as it is."
+
 ## Where the code goes
 
 - Core `Updates.swift`: `Release` (version, zip URL, sha256, page URL) parsed from the releases JSON; `isNewer(_:than:)`; `UpdateCard` state and the transitions (the `ReplyQueue` pattern: the app reports what happened, Core says what to show and what to do next); the install checks that don't need the system (digest of a file, what the new Info.plist says, whether a path can be replaced); the failure copy. All tested.
