@@ -50,7 +50,7 @@ struct HomePage: View {
                 }
                 VStack(alignment: .leading, spacing: Spacing.s) {
                     sectionHeader("Setup") { EmptyView() }
-                    SetupChips(prefs: prefs, runtime: runtime, connections: connections,
+                    SetupChips(prefs: prefs, runtime: runtime, downloads: app.downloads, connections: connections,
                                openConnections: openConnections, openVoices: openVoices)
                 }
             }

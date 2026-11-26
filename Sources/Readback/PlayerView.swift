@@ -15,6 +15,9 @@ enum Theme {
     static let hover = Color.white.opacity(0.08)
     static let dot = Color.white.opacity(0.22)
     static let dotFilled = Color.white.opacity(0.75)
+    /// The natural-voice line: brighter than `textDim`, which is too faint to read at 11.5 pt on
+    /// the panel (proposed in the 2026-11-26 mockup the owner signed off).
+    static let nudge = Color.white.opacity(0.62)
 
     static let width: CGFloat = 470
     static let radius: CGFloat = 16
@@ -26,9 +29,13 @@ struct PlayerView: View {
     @ObservedObject var reader: Reader
     @ObservedObject var replies: Replies
     @ObservedObject var downloads: ModelDownloads
+    @ObservedObject var runtime: Runtime
+    @ObservedObject var prefs: Preferences
     var onClose: () -> Void
     /// Stops a voice's download (the player's Cancel while a reply waits for its voice).
     var onCancelDownload: (String) -> Void = { _ in }
+    /// The natural-voice line's link: opens Voices, where Install says the size first.
+    var openVoices: () -> Void = {}
     /// Plays a reply from the list, switching away from whatever is playing.
     var onPlay: (Reply) -> Void
     var onHover: (Bool) -> Void
@@ -128,6 +135,40 @@ struct PlayerView: View {
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 3)
+
+            voiceNudge
+        }
+    }
+
+    /// One quiet line while a reply reads in the macOS voice because the engine isn't in: where
+    /// the person hears the flat voice is where they learn there's another (owner, 2026-11-26).
+    @ViewBuilder private var voiceNudge: some View {
+        let failed: Bool = { if case .failed = reader.phase { return true }; return false }()
+        if !failed, let nudge = runtime.nudge(for: prefs) {
+            HStack(spacing: 8) {
+                switch nudge {
+                case .getIt:
+                    Text("Reading with the macOS voice")
+                    Spacer(minLength: 8)
+                    NudgeLink(title: "Get the natural voice", action: openVoices)
+                case .downloading:
+                    Text("macOS voice until the natural voice is in")
+                    Spacer(minLength: 8)
+                    Text(runtime.progress(with: downloads)?.amount ?? "")
+                        .foregroundStyle(Theme.textActive)
+                case .didntFinish:
+                    Text("Reading with the macOS voice")
+                    Spacer(minLength: 8)
+                    NudgeLink(title: "Try again", action: openVoices)
+                }
+            }
+            .font(.system(size: 11.5, weight: .medium).monospacedDigit())
+            .foregroundStyle(Theme.nudge)
+            .lineLimit(1)
+            .frame(height: 20)
+            .padding(.horizontal, 18)
+            .padding(.top, 2)
+            .accessibilityElement(children: .contain)
         }
     }
 
@@ -581,6 +622,32 @@ private struct PressDim: ButtonStyle {
 }
 
 /// The player's Cancel for a voice download: a quiet text button that brightens under the pointer.
+/// The natural-voice line's link: text and an arrow that brighten and nudge right under the pointer.
+private struct NudgeLink: View {
+    let title: String
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title).foregroundStyle(hovering ? Theme.textActive : Theme.textActive.opacity(0.9))
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.nudge)
+                    .offset(x: hovering && !reduceMotion ? 2 : 0)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
+        .help("Opens Voices")
+    }
+}
+
 private struct CancelDownloadButton: View {
     let action: () -> Void
     @State private var hovering = false

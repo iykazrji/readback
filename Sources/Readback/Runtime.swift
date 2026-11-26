@@ -41,6 +41,19 @@ final class Runtime: ObservableObject {
     /// The model the running install ends by loading; nil outside an install (an update loads none).
     @Published private(set) var installTarget: String?
 
+    /// What Home and the player say about the natural voice, if anything (EngineInstall.nudge).
+    func nudge(for prefs: Preferences) -> EngineInstall.Nudge? {
+        let situation: EngineInstall.Situation
+        switch state {
+        case .unsupported: situation = .unsupported
+        case .notInstalled: situation = .notInstalled
+        case .installing: situation = installTarget == nil ? .updating : .installing
+        case .installed: situation = .installed
+        case .failed: situation = removeFailed ? .removalFailed : .failed
+        }
+        return EngineInstall.nudge(wantsNatural: prefs.engine.needsRuntime, engine: situation)
+    }
+
     /// The running install as one meter, engine and voice together: the setup sheet and Voices
     /// both draw this, so the numbers agree wherever the person looks. Nil outside an install.
     func progress(with downloads: ModelDownloads) -> EngineInstall.Progress? {

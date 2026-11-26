@@ -57,6 +57,7 @@ struct EveryReplyRow: View {
 struct SetupChips: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var runtime: Runtime
+    @ObservedObject var downloads: ModelDownloads
     @ObservedObject var connections: Connections
     let openConnections: () -> Void
     let openVoices: () -> Void
@@ -70,11 +71,34 @@ struct SetupChips: View {
         }
     }
 
-    private var voiceChip: some View {
-        let voice = VoiceSummary.of(prefs, runtime)
-        return SetupChip(action: openVoices, help: "Opens Voices", leadsWithMark: false) {
-            Text("Voice").foregroundStyle(.secondary)
-            Text(voice.name.isEmpty ? voice.engine : "\(voice.engine) · \(voice.name)")
+    /// While replies fall back to the macOS voice, the chip asks for the engine the way a tool chip
+    /// asks for what it needs (EngineInstall.nudge; owner, 2026-11-26). All of them open Voices.
+    @ViewBuilder private var voiceChip: some View {
+        switch runtime.nudge(for: prefs) {
+        case .getIt?:
+            SetupChip(action: openVoices, help: "Opens Voices", callToAction: "Get the natural voice", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text("macOS voice for now")
+            }
+        case .downloading?:
+            let percent = runtime.progress(with: downloads).map { DownloadAmount.percent($0.fraction) } ?? "0%"
+            // The voice being fetched: the one picked, or Kokoro when the install started from the macOS voice.
+            let name = prefs.engine.needsRuntime ? VoiceSummary.of(prefs, runtime).engine : EngineKind.kokoro.title.components(separatedBy: " (").first ?? "Kokoro"
+            SetupChip(action: openVoices, help: "Opens Voices", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text("\(name) · downloading \(percent)").monospacedDigit()
+            }
+        case .didntFinish?:
+            SetupChip(action: openVoices, help: "Opens Voices", callToAction: "Try again", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text("download didn't finish")
+            }
+        case nil:
+            let voice = VoiceSummary.of(prefs, runtime)
+            SetupChip(action: openVoices, help: "Opens Voices", leadsWithMark: false) {
+                Text("Voice").foregroundStyle(.secondary)
+                Text(voice.name.isEmpty ? voice.engine : "\(voice.engine) · \(voice.name)")
+            }
         }
     }
 

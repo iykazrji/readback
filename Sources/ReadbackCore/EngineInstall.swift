@@ -21,6 +21,42 @@ public enum EngineInstall {
         ["venv", "--clear", "--python", "3.12", "--no-project", path]
     }
 
+    /// Where the engine stands, as the nudge needs it.
+    public enum Situation: Equatable {
+        case unsupported, notInstalled, installed
+        /// A fresh install, ending with a voice: the download the person asked for.
+        case installing
+        /// New packages into an engine that's there; brief, and no voice to download.
+        case updating
+        case failed
+        /// A removal that didn't finish: Voices says so, and it's not a download to retry.
+        case removalFailed
+    }
+
+    /// What Home's Voice chip and the player say about the natural voice while replies fall
+    /// back to the macOS voice. Without it, someone who skipped the download only hears the flat
+    /// voice and never learns there's another (owner, 2026-11-26). Each opens Voices, where
+    /// Install shows the size first, so nothing big downloads without the person's click.
+    public enum Nudge: Equatable {
+        /// They want a natural voice and the engine isn't here.
+        case getIt
+        /// The install they started is under way.
+        case downloading
+        /// The install they started stopped short.
+        case didntFinish
+    }
+
+    /// `wantsNatural`: the voice picked needs the engine. Someone who picked the macOS voice is
+    /// never asked to get the engine; an install or failure they started still shows.
+    public static func nudge(wantsNatural: Bool, engine: Situation) -> Nudge? {
+        switch engine {
+        case .notInstalled: return wantsNatural ? .getIt : nil
+        case .installing: return .downloading
+        case .failed: return .didntFinish
+        case .unsupported, .installed, .updating, .removalFailed: return nil
+        }
+    }
+
     /// How far a whole install has got, as one meter.
     public struct Progress: Equatable {
         public let received: Int64
