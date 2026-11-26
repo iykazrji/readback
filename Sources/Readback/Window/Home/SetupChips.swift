@@ -89,8 +89,18 @@ struct SetupChips: View {
             SetupChip(action: openConnections, help: "Opens Connections") {
                 ToolMark(tool: home.tool, size: 20)
                 Text(home.title)
-                Text("connected").foregroundStyle(.secondary)
+                Text(Self.settled(row)).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// A tool that needs nothing from the person: connected, or what it's in the middle of, in the
+    /// Connections page's words. "Connected" only once it is (deep review 2026-11-26, P2-10).
+    static func settled(_ row: Connections.Row) -> String {
+        switch row.busy {
+        case .connecting?: return "connecting…"
+        case .disconnecting?: return "disconnecting…"
+        case nil: return "connected"
         }
     }
 
