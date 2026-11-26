@@ -20,6 +20,38 @@ public enum EngineInstall {
     public static func venvArguments(at path: String) -> [String] {
         ["venv", "--clear", "--python", "3.12", "--no-project", path]
     }
+
+    /// How far a whole install has got, as one meter.
+    public struct Progress: Equatable {
+        public let received: Int64
+        public let total: Int64
+
+        /// 0...1, held just short of full until the install ends.
+        public var fraction: Double {
+            total > 0 ? min(Double(received) / Double(total), 0.99) : 0
+        }
+
+        /// "0.45 of 1.86 GB", one width throughout (DownloadAmount).
+        public var amount: String { DownloadAmount.text(received: received, total: total) }
+    }
+
+    /// One meter for the engine's packages and then the voice's model. The setup sheet and Voices
+    /// both draw this, so closing the sheet mid-install leaves the same numbers on Voices (owner,
+    /// 2026-11-26: the download carries on in the background and Voices shows it going).
+    ///
+    /// - engineFetched: what the engine steps have fetched so far, measured on disk.
+    /// - engineTotal: what they come to (Runtime's measured figure).
+    /// - modelReceived: the voice's download so far; nil while it isn't downloading.
+    /// - modelTotal: the voice's size; 0 when it isn't known (a custom model).
+    public static func progress(step: Step?, engineFetched: Int64, engineTotal: Int64,
+                                modelReceived: Int64?, modelTotal: Int64) -> Progress {
+        // At the voice step the engine is in, whether it was fetched now or before (a Try again).
+        let engine = step == .voice ? engineTotal : min(max(engineFetched, 0), engineTotal)
+        let modelAll = max(modelTotal, modelReceived ?? 0)
+        // The voice step with nothing downloading: the model was on disk already.
+        let model = modelReceived ?? (step == .voice ? modelAll : 0)
+        return Progress(received: engine + model, total: engineTotal + modelAll)
+    }
 }
 
 extension ReadbackPaths {
