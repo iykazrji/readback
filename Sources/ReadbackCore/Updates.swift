@@ -130,10 +130,16 @@ public enum CheckFailure: Error, Equatable {
     public var message: String {
         switch self {
         case .offline: return "Readback couldn\u{2019}t reach GitHub. Check your internet connection."
-        case .busy: return "GitHub is turning requests away for a moment. Try again in a few minutes."
-        case .unexpected: return "GitHub sent back something Readback didn\u{2019}t expect."
+        case .busy: return "GitHub is limiting requests right now. Try again in a few minutes."
+        case .unexpected: return "Readback couldn\u{2019}t read GitHub\u{2019}s answer. Try again later."
         }
     }
+}
+
+/// A reason from the system as a sentence of its own, ending in one full stop.
+func sentence(_ text: String) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.hasSuffix(".") ? trimmed : trimmed + "."
 }
 
 /// Why an install stopped. Every one stops before the swap, or the swap itself failed and put
@@ -151,28 +157,32 @@ public enum InstallFailure: Error, Equatable {
     public var message: String {
         let reason: String
         switch self {
-        case .download(let why): reason = "The download stopped: \(why)."
-        case .noDigest: reason = "GitHub didn\u{2019}t say what the download should be, so Readback couldn\u{2019}t check it."
-        case .digestMismatch: reason = "The download didn\u{2019}t match the one on GitHub."
-        case .noApp: reason = "The download didn\u{2019}t have Readback in it."
-        case .wrongApp: reason = "The download held a different app."
-        case .notNewer: reason = "The download wasn\u{2019}t a newer Readback."
-        case .signature: reason = "The app in the download failed its signature check."
-        case .swap(let why): reason = "Readback couldn\u{2019}t put the new copy in place: \(why)."
+        case .download(let why): reason = "The download didn\u{2019}t finish. " + sentence(why)
+        case .noDigest: reason = "Readback couldn\u{2019}t check that the download is genuine."
+        case .digestMismatch: reason = "The download didn\u{2019}t match the file on GitHub."
+        case .noApp: reason = "Readback wasn\u{2019}t in the download."
+        case .wrongApp: reason = "The download had a different app in it."
+        case .notNewer: reason = "The download wasn\u{2019}t newer than the Readback you have."
+        case .signature: reason = "The app in the download failed macOS\u{2019}s signature check."
+        case .swap(let why): reason = "Readback couldn\u{2019}t swap in the new copy. " + sentence(why)
         }
-        return reason + " Readback left your copy as it is."
+        return reason + " " + Self.unchanged
     }
+
+    /// Every install failure ends with this: nothing was replaced.
+    public static let unchanged = "Your copy hasn\u{2019}t changed."
 }
 
-/// Why Readback can't swap itself where it is.
+/// Why Readback can't swap itself where it is. Shown under "Readback 0.6.0 is out", above a
+/// Download page button, so each one says why and what to do instead.
 public enum ReplaceProblem: Equatable {
     case readOnly, translocated, notAnApp
 
     public var message: String {
         switch self {
-        case .readOnly: return "It isn\u{2019}t allowed to change the folder it\u{2019}s in. Download it and replace Readback yourself."
-        case .translocated: return "macOS is running it from a temporary copy. Move Readback to Applications, open it, and check again."
-        case .notAnApp: return "This copy of Readback isn\u{2019}t an installed app."
+        case .readOnly: return "Readback can\u{2019}t change the folder it\u{2019}s in. Download the new version and replace the app yourself."
+        case .translocated: return "macOS is running Readback from a temporary copy. Move it to Applications, open it from there, and check again."
+        case .notAnApp: return "This copy of Readback isn\u{2019}t an installed app, so it can\u{2019}t update itself."
         }
     }
 }
@@ -191,9 +201,9 @@ public enum UpdateWait: Equatable {
 
     public var message: String {
         switch self {
-        case .engineInstall: return "Install it once the voice engine has finished installing."
-        case .voiceDownload: return "Install it once the voice download has finished."
-        case .connecting: return "Install it once Connections has finished."
+        case .engineInstall: return "You can install it when the voice engine finishes installing."
+        case .voiceDownload: return "You can install it when the voice download finishes."
+        case .connecting: return "You can install it when your tools finish connecting."
         }
     }
 }

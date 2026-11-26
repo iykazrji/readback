@@ -125,7 +125,7 @@ private struct SessionRow: View {
                         .controlSize(.small)
                         // The words start on the replies' left edge, as the header's "See all" ends on its right.
                         .padding(.leading, -ControlMetrics.smallQuietPadding)
-                        .help("Opens History with only \(session.project)'s replies")
+                        .help("Show only \(session.project)\u{2019}s replies, in History")
                     }
                 }
                 // Lines up with the project name: chevron 10 + 12 + mark 30 + 12.

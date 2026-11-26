@@ -109,8 +109,16 @@ import Testing
 
     @Test func installFailuresSayTheCopyIsUntouched() {
         for failure in [InstallFailure.noDigest, .digestMismatch, .noApp, .wrongApp, .notNewer, .signature, .download("x"), .swap("x")] {
-            #expect(failure.message.hasSuffix("Readback left your copy as it is."))
+            #expect(failure.message.hasSuffix(InstallFailure.unchanged))
         }
+    }
+
+    /// The system's own reasons already end in a full stop; the message mustn't double it.
+    @Test func systemReasonsGetOneFullStop() {
+        #expect(InstallFailure.download("The network connection was lost.").message
+            == "The download didn\u{2019}t finish. The network connection was lost. Your copy hasn\u{2019}t changed.")
+        #expect(InstallFailure.swap("Permission denied").message
+            == "Readback couldn\u{2019}t swap in the new copy. Permission denied. Your copy hasn\u{2019}t changed.")
     }
 
     // MARK: The card's states

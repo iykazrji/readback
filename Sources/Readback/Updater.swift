@@ -127,7 +127,7 @@ final class Updater: ObservableObject {
         defer { meter.cancel() }
         let (temporary, response) = try await session.download(from: url, delegate: watcher)
         if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
-            throw InstallFailure.download("GitHub answered \(status)")
+            throw InstallFailure.download("GitHub sent error \(status).")
         }
         let zip = folder.appendingPathComponent(Release.assetName)
         try FileManager.default.moveItem(at: temporary, to: zip)

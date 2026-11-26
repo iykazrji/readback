@@ -37,11 +37,21 @@ The version card at the bottom of the sidebar, under the Voice card, shows one o
 2. **Checking:** the line reads "Checking…" with the arrow turning (still under Reduce Motion).
 3. **Up to date:** "Readback 0.5.0 ✓" and "You have the newest version." for 3 seconds, then back to rest.
 4. **Available:** "Readback 0.6.0 is out", "You have 0.5.0.", a primary "Install and relaunch" button, and a quiet "What's new" that opens the release page.
-5. **Can't replace itself:** shown instead of Available when the app can't be swapped in place. Either its folder or bundle isn't writable ("It isn't allowed to change the folder it's in. Download 0.6.0 and replace it yourself."), or macOS is running it from a temporary copy (`/AppTranslocation/` in the path: "macOS is running it from a temporary copy. Move Readback to Applications, open it, and check again."). One button: "Download page".
+5. **Can't replace itself:** shown instead of Available when the app can't be swapped in place. Same heading as Available ("Readback 0.6.0 is out"), then why, and one button, "Download page". The reasons: its folder or bundle isn't writable ("Readback can't change the folder it's in. Download the new version and replace the app yourself."), macOS is running it from a temporary copy (`/AppTranslocation/` in the path: "macOS is running Readback from a temporary copy. Move it to Applications, open it from there, and check again."), or it isn't an app bundle at all, as in a dev build ("This copy of Readback isn't an installed app, so it can't update itself.").
 6. **Downloading:** "Downloading 0.6.0", a meter, "12.4 of 21.4 MB" and a quiet Cancel. Cancel goes back to Available.
 7. **Installing:** "Installing 0.6.0" and "Readback will close and reopen in a moment." Then the app quits and the new one opens.
-8. **Couldn't check:** "Couldn't check for updates", a reason, "Try again" and a quiet "Close" (back to rest). Reasons: no connection ("Readback couldn't reach GitHub. Check your internet connection."), rate-limited (403 or 429: "GitHub is turning requests away for a moment. Try again in a few minutes."), anything else ("GitHub sent back something Readback didn't expect.").
-9. **Couldn't install:** "Couldn't install 0.6.0", a reason, "Try again" and a quiet "Download page". Reasons: the digest doesn't match ("The download didn't match the one on GitHub, so Readback left your copy as it is."), the zip has no Readback in it, it's a different app or not newer, the signature check fails, or the swap fails. Each reason ends with "Readback left your copy as it is."
+8. **Couldn't check:** "Couldn't check for updates", a reason, "Try again" and a quiet "Close" (back to rest). Reasons: no connection ("Readback couldn't reach GitHub. Check your internet connection."), rate-limited (403 or 429: "GitHub is limiting requests right now. Try again in a few minutes."), anything else ("Readback couldn't read GitHub's answer. Try again later.").
+9. **Couldn't install:** "Couldn't install 0.6.0", a reason, a full-width "Try again" and a quiet "Download page" under it. Reasons:
+   - the download stopped: "The download didn't finish." and the system's reason
+   - no digest: "Readback couldn't check that the download is genuine."
+   - digest mismatch: "The download didn't match the file on GitHub."
+   - no app: "Readback wasn't in the download."
+   - another app: "The download had a different app in it."
+   - not newer: "The download wasn't newer than the Readback you have."
+   - signature: "The app in the download failed macOS's signature check."
+   - the swap: "Readback couldn't swap in the new copy." and the system's reason
+
+   Each ends with "Your copy hasn't changed." (Reworded in an unslop pass, 2026-11-26.)
 
 Install, in order, stopping at the first failure:
 1. Download `Readback.zip` to a fresh temp folder, with progress.
@@ -57,10 +67,10 @@ After it reopens, the new version clears its own quarantine flag as it already d
 
 ## Settled after the builder check (agent's calls, for the owner to check)
 
-- **Install waits for other work.** While a voice downloads, the engine installs, or a Connect is in progress, the Available card keeps "Install and relaunch" but disables it, with one line saying why ("Install it once the voice download has finished."). Quitting then would throw away a download the person asked for, or half-write a tool's config.
+- **Install waits for other work.** While a voice downloads, the engine installs, or a Connect is in progress, the Available card keeps "Install and relaunch" but disables it, with one line saying why ("You can install it when the voice download finishes.", "…when the voice engine finishes installing.", "…when your tools finish connecting."). Quitting then would throw away a download the person asked for, or half-write a tool's config.
 - **The audio permission after an update.** It's asked for only when the switch is flipped, so after an update it could fail silently rather than ask again. Before quitting, the updater notes the version it's leaving. On the next launch, if that note is there and "lower other sounds" is on, Readback runs its permission ask once. If the old grant still holds, that's silent (a 1.5 s tap at full volume). If not, macOS asks. Either way the switch keeps working.
 - **Waiting replies** become kept on launch, which is what launch already does. They stay in History.
-- **The four install failures without owner copy** were drafted in the same voice: "The download didn't have Readback in it.", "The download held a different app." / "The download wasn't a newer Readback.", "The app in the download failed its signature check.", "Readback couldn't put the new copy in place: <reason>." Each ends "Readback left your copy as it is."
+- **The install failures' wording** is the agent's, listed under state 9.
 
 ## Where the code goes
 

@@ -131,7 +131,7 @@ struct HistoryPage: View {
                     EmptyReplies(openConnections: openConnections)
                 } else if filtered.isEmpty {
                     EmptyCard(title: noMatchTitle,
-                              message: session == nil ? "Try other words, or look through every tool." : "Try other words, or look through every session.") {
+                              message: session == nil ? "Try other words, or look through every tool." : "Try other words, or show replies from every session.") {
                         Button("Show all replies") {
                             search = ""
                             tool = nil

@@ -53,15 +53,17 @@ Music playing while it reads? Switch on Reading → "Lower other sounds while re
 
 When several agents finish at once, the replies queue up instead of talking over each other: the player shows **+2** for two waiting, and the next one starts when the current one ends. Click the title in the player to see the list and jump to any of them. (Prefer being interrupted? Reading → "Switch to it".)
 
-Open Readback from Applications to get its window: **Home** shows what's reading and what's next, your recent sessions (click one to see its latest replies, and **See all** to see the rest of that session in History), and whether your tools are set up. **History** keeps the last 50 replies (search them, filter by tool, click to hear one again, right-click to copy or remove), and **Voices**, **Reading** and **Connections** hold the settings.
+Open Readback from Applications to get its window: **Home** shows what's being read and what's next, your recent sessions, and whether your tools are set up. Click a session to see its three newest replies, and **See all … replies** under them to see the rest in History. **History** keeps the last 50 replies (search them, filter by tool, click to hear one again, right-click to copy or remove), and **Voices**, **Reading** and **Connections** hold the settings.
 
 There's also a command-line tool at `/Applications/Readback.app/Contents/Helpers/readback`. Run it with no arguments to see what it does, for example `readback voice kokoro bm_george` to switch voices, `readback engine install` to install the natural voice from the terminal, or `readback say "hello"`.
 
 ## Updating
 
-Click **Check for updates** under the version at the bottom of Readback's sidebar. Readback only looks when you click; it never checks by itself. If there's a newer version, click **Install and relaunch**. Readback downloads it, checks it's the real thing, puts it in place of the old copy and reopens. Your tools stay connected, and Codex doesn't ask you to approve its hooks again. If you've turned on "Lower other sounds", macOS may ask for that permission once more.
+Click **Check for updates** at the bottom of Readback's sidebar, under the version number. Readback never checks on its own.
 
-If Readback can't replace itself (say it's in a folder it isn't allowed to change), it offers the download page instead. Download the zip and replace the app yourself.
+If there's a newer version, click **Install and relaunch**. Readback downloads it, makes sure it's genuine, swaps it in for your copy and reopens. Your tools stay connected, and Codex won't ask you to approve its hooks again. If you've turned on "Lower other sounds while reading", macOS may ask for that permission again.
+
+If Readback can't replace itself, for example because it's in a folder it isn't allowed to change, you'll see **Download page** instead. Download the zip from there and replace the app yourself.
 
 ## Uninstall
 

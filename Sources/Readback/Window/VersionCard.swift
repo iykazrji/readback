@@ -57,8 +57,8 @@ struct VersionCard: View {
                 .padding(.top, 10)
             pageLink("What\u{2019}s new", release)
         case .cantReplace(let release, let problem):
-            heading("Readback can\u{2019}t update itself here")
-            note("\(release.version) is out. \(problem.message)")
+            heading("Readback \(release.version) is out")
+            note(problem.message)
             Button("Download page") { updater.openPage(release) }
                 .controlSize(.small)
                 .padding(.top, 10)
