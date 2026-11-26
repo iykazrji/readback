@@ -143,6 +143,10 @@ struct MainView: View {
                 .background(GlassBackground(.underWindowBackground, tint: WindowColors.pageTint))
                 // The page title sits in the title bar's row, level with the window buttons.
                 .ignoresSafeArea(.container, edges: .top)
+                // The window's own title ("Readback") is hidden, but on macOS 26 the split view
+                // drew it in the detail column's toolbar anyway, above each page's title (seen on
+                // 26.3.1, 2026-11-26; 27.2 doesn't draw it). The page title is the only title.
+                .toolbar(removing: .title)
         }
         .frame(minWidth: 760, minHeight: 500)
         .containerBackground(.clear, for: .window)   // the panes draw their own glass
