@@ -167,7 +167,9 @@ struct PlayerView: View {
             .lineLimit(1)
             .frame(height: 20)
             .padding(.horizontal, 18)
+            // Even gaps above (to the dots) and below (to the bar), seen in the 2026-11-26 check.
             .padding(.top, 2)
+            .padding(.bottom, 4)
             .accessibilityElement(children: .contain)
         }
     }
