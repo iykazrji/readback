@@ -79,7 +79,7 @@ final class Runtime: ObservableObject {
     /// The install's voice was in the cache when the voice step began (a reinstall).
     private var voiceWasOnDisk = false
     /// When the voice step began: only a download finished since then is this install's.
-    private var voiceStepBegan = Date.distantFuture
+    private var voiceStepBegan: TimeInterval = .infinity
 
     /// The engine kind whose model the running install loads, for "Kokoro · downloading".
     var installingEngine: EngineKind? {
@@ -202,7 +202,7 @@ final class Runtime: ObservableObject {
         fetchedBytes = 0
         installTarget = model
         voiceWasOnDisk = false
-        voiceStepBegan = .distantFuture
+        voiceStepBegan = .infinity
         // This attempt is an install: a failure now is the install's, not an earlier update's.
         updateFailed = false
         state = .installing("Starting…")   // so anyone asking right away sees it's under way
@@ -242,7 +242,7 @@ final class Runtime: ObservableObject {
                 fetchedBytes = max(fetchedBytes, Self.expectedFetchBytes)
                 // Asked before the step shows, so the meter never counts a model that isn't there.
                 voiceWasOnDisk = ModelCache().isDownloaded(model, expectedBytes: VoiceCatalog.downloadBytes(for: model))
-                voiceStepBegan = Date()
+                voiceStepBegan = ProcessInfo.processInfo.systemUptime
                 step = .voice
                 state = .installing("Downloading the voice (\(modelSize))…")
                 installingModel = model

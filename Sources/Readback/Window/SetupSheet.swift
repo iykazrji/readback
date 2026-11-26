@@ -264,20 +264,23 @@ struct SetupSheet: View {
         var lines: [String] = []
         // A new connection reads every reply (owner, 2026-11-26), unless the person had switched
         // that off before, so each line says what this tool will actually do.
-        // While a connect runs, say what it will do; once it's done (or failed), the saved switch is
-        // the answer, so a failed or not-new connect never promises reading (review 2026-11-26).
-        // And a tool whose connect failed promises nothing, whatever its switch says.
-        let connecting = { (tool: Tool) in picked.contains { $0.tool == tool && row($0)?.busy != nil } }
-        let failed = { (tool: Tool) in picked.contains { $0.tool == tool && row($0)?.busy == nil && row($0)?.error != nil } }
+        // While a connect runs, say what it will do; once it's done, the saved switch is the answer,
+        // so a not-new connect never promises reading (review 2026-11-26). A home whose connect
+        // failed is left out of the guidance: Codex and Codex in Orca share one switch, and one
+        // failing mustn't misreport the other (review 2026-11-26, round 3).
+        let failed = { (home: ToolHome) in row(home)?.busy == nil && row(home)?.error != nil }
+        let working = picked.filter { !failed($0) }
+        let connecting = { (tool: Tool) in working.contains { $0.tool == tool && row($0)?.busy != nil } }
         let readsEvery = { (tool: Tool) in
-            !failed(tool) && (prefs.readsEveryReply(tool) || (turningOn.contains(tool) && connecting(tool)))
+            working.contains { $0.tool == tool }
+                && (prefs.readsEveryReply(tool) || (turningOn.contains(tool) && connecting(tool)))
         }
-        if picked.contains(where: { $0.tool == .claude }) {
+        if working.contains(where: { $0.tool == .claude }) {
             lines.append(readsEvery(.claude)
                 ? "Start a new Claude Code session and ask anything. Readback reads every reply out loud."
                 : "In a new Claude Code session, type /readback:speak on, then ask anything. Readback reads the reply.")
         }
-        let codex = picked.filter { $0.tool == .codex }
+        let codex = working.filter { $0.tool == .codex }
         if !codex.isEmpty {
             let approved = codex.allSatisfy { row($0)?.status == .connected }
             let wait = approved ? "" : " once you've approved Readback there"
@@ -285,9 +288,9 @@ struct SetupSheet: View {
                 ? "In a Codex chat, ask anything\(wait). Readback reads every reply; /read reads the last one again."
                 : "In a Codex chat, type /speak on\(wait). /read reads the last reply again.")
         }
-        if picked.contains(where: { readsEvery($0.tool) }) {
+        if working.contains(where: { readsEvery($0.tool) }) {
             lines.append("To stop reading every reply, switch it off for a tool in Reading.")
-        } else if !picked.isEmpty {
+        } else if !working.isEmpty {
             lines.append("To hear every reply without asking, switch it on for a tool in Reading.")
         }
         return lines
