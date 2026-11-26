@@ -73,6 +73,265 @@ final class DeepReviewCompatibilityTests: XCTestCase {
     }
 }
 
+/// Fix review, round 1 (R1-1): in 0.5 Claude Code's commands are files, /readback:read and
+/// /readback:speak. If its UserPromptSubmit hook fires for one, that prompt isn't a new turn, and
+/// it stops nothing: otherwise /readback:read would make the reply it's about to read look like an
+/// earlier turn's (a second History row) or stop the reading it starts. The hook's stdin is
+/// Claude Code's UserPromptSubmit payload: session_id and prompt (HookPayload.stopRequest).
+final class DeepReviewOwnCommandTests: XCTestCase {
+    func testReadbacksOwnCommandIsntANewTurn() {
+        for prompt in ["/readback:read", "/readback:speak on", "/readback:speak"] {
+            XCTAssertNil(HookPayload(json: ["session_id": "s", "prompt": prompt]).stopRequest, prompt)
+        }
+        XCTAssertEqual(HookPayload(json: ["session_id": "s", "prompt": "fix the failing test"]).stopRequest,
+                       StopRequest(session: "s", newTurn: true))
+        XCTAssertEqual(HookPayload(json: ["session_id": "s", "prompt": "/read the docs first"]).stopRequest,
+                       StopRequest(session: "s", newTurn: true), "an ordinary prompt that starts like one")
+    }
+}
+
+/// P2-1: "the engine is installed" has one meaning, its receipt and its server both there. A retry
+/// after the voice step failed resumes at the voice step (Runtime.install), so it never clears an
+/// environment that works; VoiceServer and Runtime ask the same question.
+final class DeepReviewEngineInstalledTests: XCTestCase {
+    func testInstalledMeansTheReceiptAndTheServer() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rb-engine-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = ReadbackPaths(home: home)
+        let fm = FileManager.default
+        XCTAssertFalse(paths.engineIsInstalled)
+        try fm.createDirectory(at: paths.voiceServer.deletingLastPathComponent(), withIntermediateDirectories: true)
+        fm.createFile(atPath: paths.voiceServer.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        XCTAssertFalse(paths.engineIsInstalled, "a server without its receipt is an install cut short")
+        try Data("{}".utf8).write(to: paths.runtimeReceipt)
+        XCTAssertTrue(paths.engineIsInstalled)
+        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: paths.voiceServer.path)
+        XCTAssertFalse(paths.engineIsInstalled, "a server that can't run")
+    }
+
+    /// The step a retry starts at: past the engine once it's installed, so `uv venv --clear` only
+    /// ever runs over an environment that was never finished.
+    func testARetryAfterTheVoiceStepStartsThere() {
+        XCTAssertEqual(EngineInstall.firstStep(engineInstalled: true), .voice)
+        XCTAssertEqual(EngineInstall.firstStep(engineInstalled: false), .python)
+    }
+}
+
+/// P2-2: the copied mod in Application Support is shared by every Claude Code login connected to
+/// Readback. One connected only through CLAUDE_CONFIG_DIR (a work login, AGENT-SETUP.md) gets the
+/// new mod at launch too, though the app only sees ~/.claude, which isn't connected.
+final class DeepReviewSharedModTests: XCTestCase {
+    func testLaunchRefreshesTheCopyWhenOnlyASecondLoginIsConnected() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rb-mod-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let fm = FileManager.default
+        // This version's mod, as the bundle carries it: the 0.3.0 manifest and the command files.
+        let bundled = home.appendingPathComponent("Bundle/ClaudeCodePlugin", isDirectory: true)
+        try fm.createDirectory(at: bundled.appendingPathComponent(".claude-plugin"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: bundled.appendingPathComponent("commands"), withIntermediateDirectories: true)
+        try #"{"name":"readback","version":"0.3.0"}"#.write(to: bundled.appendingPathComponent(".claude-plugin/plugin.json"), atomically: true, encoding: .utf8)
+        try "---\ndescription: Read the last reply aloud now with Readback\n---\n".write(to: bundled.appendingPathComponent("commands/read.md"), atomically: true, encoding: .utf8)
+        // The 0.4 copy, left by connecting the second login: no command files.
+        let paths = ReadbackPaths(home: home)
+        try fm.createDirectory(at: paths.claudePlugin.appendingPathComponent(".claude-plugin"), withIntermediateDirectories: true)
+        try #"{"name":"readback","version":"0.2.0"}"#.write(to: paths.claudePlugin.appendingPathComponent(".claude-plugin/plugin.json"), atomically: true, encoding: .utf8)
+
+        let files = IntegrationFiles(paths: paths, cli: "/Applications/Readback.app/Contents/Helpers/readback", bundledPlugin: bundled, codex: { _, _ in })
+        XCTAssertEqual(try files.status(.claude), .notConnected, "~/.claude itself isn't connected")
+        try files.refreshPlugin()
+        XCTAssertTrue(fm.fileExists(atPath: paths.claudePlugin.appendingPathComponent("commands/read.md").path))
+        XCTAssertEqual(try String(contentsOf: paths.claudePlugin.appendingPathComponent(".claude-plugin/plugin.json"), encoding: .utf8),
+                       #"{"name":"readback","version":"0.3.0"}"#)
+    }
+
+    /// Never connected anywhere: no copy, and launch doesn't make one.
+    func testNoCopyIsMadeWhenNothingWasConnected() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rb-mod-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let bundled = home.appendingPathComponent("Bundle/ClaudeCodePlugin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundled, withIntermediateDirectories: true)
+        try "x".write(to: bundled.appendingPathComponent("a"), atomically: true, encoding: .utf8)
+        let paths = ReadbackPaths(home: home)
+        try IntegrationFiles(paths: paths, cli: "/x/readback", bundledPlugin: bundled, codex: { _, _ in }).refreshPlugin()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.claudePlugin.path))
+    }
+}
+
+/// P2-3: switching "Lower other sounds while reading" off lets the tap go now, not after the
+/// 60-second linger that's only for a run of replies, including when a reading already ended and
+/// the tap is lingering. AppDelegate passes the switch as `prefs.lowerOtherAudio` on every phase.
+final class DeepReviewDuckingTests: XCTestCase {
+    func testSwitchingOffMidReadingLetsTheTapGo() {
+        var ducking = OtherAudioDucking()
+        _ = ducking.readingChanged(.playing, switchedOn: true)
+        XCTAssertEqual(ducking.readingChanged(.playing, switchedOn: false), .release)
+        XCTAssertEqual(ducking.readingChanged(.stopped, switchedOn: false), .nothing, "once")
+    }
+
+    func testSwitchingOffWhileTheTapLingersLetsItGo() {
+        var ducking = OtherAudioDucking()
+        _ = ducking.readingChanged(.playing, switchedOn: true)
+        _ = ducking.readingChanged(.stopped, switchedOn: true)
+        XCTAssertEqual(ducking.restoreDue(.stopped), .restore, "back up; the tap lingers")
+        XCTAssertEqual(ducking.readingChanged(.stopped, switchedOn: false), .release)
+    }
+
+    func testOffAllAlongDoesNothing() {
+        var ducking = OtherAudioDucking()
+        XCTAssertEqual(ducking.readingChanged(.playing, switchedOn: false), .nothing)
+    }
+}
+
+/// P2-5, P2-7, P2-8: the updater. Release.parse reads GitHub's releases/latest; the Info.plist and
+/// architectures come from the unzipped app (Updater.unpackAndCheck, `lipo -archs`).
+final class DeepReviewUpdateTests: XCTestCase {
+    private let release = Release(version: "0.6.0", zip: URL(string: "https://example.com/a/Readback.zip")!, sha256: "ab",
+                                  page: URL(string: "https://example.com/r")!, size: 100)
+    private let info: [String: Any] = ["CFBundleIdentifier": "local.readback", "CFBundleShortVersionString": "0.6.0",
+                                       "LSMinimumSystemVersion": "15.0"]
+    private let sequoia = OperatingSystemVersion(majorVersion: 15, minorVersion: 2, patchVersion: 0)
+
+    /// P2-7: the app in the zip is the version that was offered, has this Mac's architecture and
+    /// runs on this macOS, or the working copy isn't replaced.
+    func testTheNewAppMustBeTheOneOfferedAndRunHere() {
+        XCTAssertNil(Updates.check(newInfo: info, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                   architectures: ["arm64"], machine: "arm64", system: sequoia))
+        var later = info
+        later["CFBundleShortVersionString"] = "0.7.0"
+        XCTAssertEqual(Updates.check(newInfo: later, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                     architectures: ["arm64"], machine: "arm64", system: sequoia), .notOffered)
+        XCTAssertEqual(Updates.check(newInfo: info, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                     architectures: ["x86_64"], machine: "arm64", system: sequoia), .incompatible)
+        var newerOS = info
+        newerOS["LSMinimumSystemVersion"] = "26.0"
+        XCTAssertEqual(Updates.check(newInfo: newerOS, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                     architectures: ["arm64", "x86_64"], machine: "arm64", system: sequoia), .incompatible)
+        XCTAssertNil(Updates.check(newInfo: info, bundleID: "local.readback", current: "0.5.0", offered: "v0.6.0",
+                                   architectures: ["x86_64", "arm64"], machine: "arm64", system: sequoia), "a tag's v doesn't count")
+    }
+
+    /// P2-5: removing the engine is work Install waits for too, and so is anything started while
+    /// the zip downloaded: the swap asks again and stops, changing nothing.
+    func testRemovingTheEngineHoldsInstallAndTheSwapAsksAgain() {
+        XCTAssertEqual(UpdateWait.of(voiceDownload: false, engineInstall: false, connecting: false, engineRemoval: true), .engineRemoval)
+        XCTAssertTrue(InstallFailure.busy(.voiceDownload).message.hasSuffix(InstallFailure.unchanged))
+        XCTAssertTrue(InstallFailure.busy(.voiceDownload).message.contains(UpdateWait.voiceDownload.message))
+    }
+
+    /// P2-8: Try again after a failed install asks GitHub again, so a corrected or newer release is
+    /// what downloads, not the one that failed.
+    func testTryAgainFetchesTheReleaseAgain() {
+        var flow = UpdateFlow()
+        _ = flow.check()
+        _ = flow.checked(.success(release), current: "0.5.0", problem: nil)
+        _ = flow.install()
+        flow.failed(.digestMismatch)
+        XCTAssertEqual(flow.install(), .fetch, "asks again first")
+        XCTAssertEqual(flow.card, .checking)
+        let fixed = Release(version: "0.6.1", zip: URL(string: "https://example.com/b/Readback.zip")!, sha256: "cd",
+                            page: release.page, size: 100)
+        XCTAssertEqual(flow.checked(.success(fixed), current: "0.5.0", problem: nil), .download(fixed), "and installs what it finds")
+    }
+
+    /// A card that says the app can't replace itself can check again once the person has moved it.
+    func testCantReplaceCanCheckAgain() {
+        var flow = UpdateFlow()
+        _ = flow.check()
+        _ = flow.checked(.success(release), current: "0.5.0", problem: .readOnly)
+        XCTAssertEqual(flow.check(), .fetch)
+        XCTAssertEqual(flow.checked(.success(release), current: "0.5.0", problem: nil), nil)
+        XCTAssertEqual(flow.card, .available(release))
+    }
+}
+
+/// P2-9: two replies in one session within one second stay in the order they arrived through a
+/// save and load, and Home's newest is the newer one. Replies come from ReplyQueue.received in
+/// production; History saves with ReplyHistory.save and the app loads with ReplyHistory.load.
+final class DeepReviewSameSecondTests: XCTestCase {
+    private let t = Date(timeIntervalSince1970: 1_800_000_000.2)
+    // Ids chosen so that breaking a tie by id (smallest first) picks the older one.
+    private let older = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    private let newer = UUID(uuidString: "FFFFFFFF-0000-0000-0000-000000000000")!
+
+    func testHomesNewestIsTheNewerAfterASaveAndLoad() throws {
+        var history = ReplyHistory()
+        history.add(Reply(id: older, text: "Older", source: "claude", cwd: "/p", session: "s", received: t, state: .kept))
+        history.add(Reply(id: newer, text: "Newer", source: "claude", cwd: "/p", session: "s", received: t + 0.5, state: .kept))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("history-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try history.save(to: url)
+        let loaded = try XCTUnwrap(ReplyHistory.load(from: url))
+        XCTAssertEqual(loaded.replies.map(\.text), ["Newer", "Older"])
+        XCTAssertEqual(SessionSummary.sessions(from: loaded.replies).first?.newest.text, "Newer")
+    }
+
+    /// An exact tie keeps History's order: newest first, as replies arrived.
+    func testAnExactTieKeepsHistorysOrder() {
+        var history = ReplyHistory()
+        history.add(Reply(id: older, text: "Older", source: "claude", cwd: "/p", session: "s", received: t, state: .kept))
+        history.add(Reply(id: newer, text: "Newer", source: "claude", cwd: "/p", session: "s", received: t, state: .kept))
+        XCTAssertEqual(SessionSummary.sessions(from: history.replies).first?.replies.map(\.text), ["Newer", "Older"])
+        let cleared = history.clearForUndo()
+        history.restore(cleared)
+        XCTAssertEqual(history.replies.map(\.text), ["Newer", "Older"], "Undo puts them back in the same order")
+    }
+
+    /// A history saved before this version, in whole seconds, still loads.
+    func testAnOlderHistoryWithWholeSecondsStillLoads() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("history-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let json = #"{"limit":50,"replies":[{"id":"00000000-0000-0000-0000-000000000001","text":"Hi","received":"2026-11-20T10:00:00Z","state":"kept"}]}"#
+        try json.write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try ReplyHistory.load(from: url)?.replies.first?.received, Date(timeIntervalSince1970: 1_795_168_800))
+    }
+}
+
+/// P2 plausible (a): a line the voice would say nothing for (only commit hashes, which SpokenText
+/// leaves out) is never sent to the voice, where an engine that rejects empty text would fail the
+/// whole reading; and a reply made only of such lines isn't speakable, so the queue keeps it
+/// rather than "playing" silence. The reader voices `SpokenText.rewrite(chunk)` (Reader.start).
+final class DeepReviewVoicedChunkTests: XCTestCase {
+    func testALineWithNothingToSayIsntVoiced() {
+        let reply = "First part.\n1942cef 8a669b7\nSecond part."
+        XCTAssertTrue(SpeechText.chunks(SpeechText.clean(reply)).contains { SpokenText.rewrite($0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
+                      "the review's case: a chunk that rewrites to nothing")
+        let voiced = SpeechText.voicedChunks(reply)
+        XCTAssertEqual(voiced.count, 2)
+        XCTAssertFalse(voiced.contains { SpokenText.rewrite($0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        XCTAssertFalse(SpeechText.isSpeakable("1942cef\n`8a669b7`"))
+        XCTAssertTrue(SpeechText.isSpeakable(reply))
+    }
+}
+
+/// Fix review, round 1 (R1-2): the updater reads the new app's slices from its Mach-O header
+/// itself. /usr/bin/lipo is a developer tool: on a Mac without the Command Line Tools it asks to
+/// install them, mid-update.
+final class DeepReviewMachOTests: XCTestCase {
+    private func file(_ bytes: [UInt8]) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("macho-\(UUID())")
+        try Data(bytes + [UInt8](repeating: 0, count: 64)).write(to: url)
+        return url
+    }
+
+    func testReadsAThinAndAUniversalExecutable() throws {
+        // mach_header_64, little-endian: magic 0xfeedfacf, cputype 0x0100000c (arm64).
+        let thin = try file([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01])
+        XCTAssertEqual(Updates.architectures(ofExecutable: thin), ["arm64"])
+        // fat_header, big-endian: magic 0xcafebabe, two fat_arch entries of 20 bytes.
+        let fat = try file([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2,
+                            0x01, 0, 0, 0x07] + [UInt8](repeating: 0, count: 16)
+                            + [0x01, 0, 0, 0x0c] + [UInt8](repeating: 0, count: 16))
+        XCTAssertEqual(Updates.architectures(ofExecutable: fat), ["x86_64", "arm64"])
+        XCTAssertNil(Updates.architectures(ofExecutable: try file(Array("#!/bin/sh\n".utf8))))
+    }
+
+    #if arch(arm64)
+    func testReadsARealExecutable() {
+        XCTAssertEqual(Updates.architectures(ofExecutable: URL(fileURLWithPath: "/bin/ls"))?.contains("arm64"), true)
+    }
+    #endif
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)

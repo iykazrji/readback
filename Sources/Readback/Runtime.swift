@@ -29,7 +29,7 @@ final class Runtime: ObservableObject {
     @Published private(set) var lastLines: [String] = []
 
     /// Which part of an install is running, for the setup sheet's steps.
-    enum Step: Equatable { case python, engine, voice }
+    typealias Step = EngineInstall.Step
     @Published private(set) var step: Step?
     /// Bytes an install has fetched so far: Python plus uv's download folder, measured on disk
     /// every second (uv runs without progress output, so this is the honest number there is).
@@ -102,7 +102,8 @@ final class Runtime: ObservableObject {
         }
     }
 
-    /// Voices' Try again: an update again if that's what failed, else a fresh install.
+    /// Voices' Try again: an update again if that's what failed, else the install again, which
+    /// starts at the voice when the engine is already in (EngineInstall.firstStep).
     func retry(for prefs: Preferences) {
         if removeFailed { startRemoving() } else if updateFailed { update() } else { install(for: prefs) }
     }
@@ -119,9 +120,7 @@ final class Runtime: ObservableObject {
     /// packages are in (the receipt); whether a voice's model is downloaded shows apart from that.
     private func readState() {
         #if arch(arm64)
-        let installed = FileManager.default.fileExists(atPath: paths.runtimeReceipt.path)
-            && FileManager.default.isExecutableFile(atPath: paths.voiceServer.path)
-        state = installed ? .installed : .notInstalled
+        state = paths.engineIsInstalled ? .installed : .notInstalled
         #else
         state = .unsupported
         #endif
@@ -166,25 +165,29 @@ final class Runtime: ObservableObject {
                       FileManager.default.isExecutableFile(atPath: uv.path) else {
                     throw InstallError("this copy of Readback has no uv inside it")
                 }
-                try FileManager.default.createDirectory(at: paths.runtime, withIntermediateDirectories: true)
-                startMeter()
-                step = .python
-                state = .installing("Getting Python…")
-                try await run(uv, ["venv", "--python", "3.12", "--no-project", paths.runtime.appendingPathComponent(".venv").path])
-                step = .engine
-                state = .installing("Installing the voice engine (\(Self.size))…")
-                try await run(uv, ["pip", "install", "--python", paths.python.path] + Self.packages)
-                meter?.cancel()
-                meter = nil
+                // Try again after the voice's download failed: the engine is in, so only the
+                // voice is left, and the environment that works is never cleared.
+                if EngineInstall.firstStep(engineInstalled: paths.engineIsInstalled) == .python {
+                    try FileManager.default.createDirectory(at: paths.runtime, withIntermediateDirectories: true)
+                    startMeter()
+                    step = .python
+                    state = .installing("Getting Python…")
+                    try await run(uv, EngineInstall.venvArguments(at: paths.runtime.appendingPathComponent(".venv").path))
+                    step = .engine
+                    state = .installing("Installing the voice engine (\(Self.size))…")
+                    try await run(uv, ["pip", "install", "--python", paths.python.path] + Self.packages)
+                    meter?.cancel()
+                    meter = nil
+                    let receipt = ["installed": ISO8601DateFormatter().string(from: Date()), "packages": Self.packages.joined(separator: ", ")]
+                    try JSONSerialization.data(withJSONObject: receipt, options: .prettyPrinted).write(to: paths.runtimeReceipt)
+                    // uv's download cache is as big as the engine and useless once it's installed.
+                    let cache = paths.runtime.appendingPathComponent("uv-cache")
+                    do { try FileManager.default.removeItem(at: cache) } catch {
+                        Log.error("couldn't clear the install cache at \(cache.path): \(error)")
+                    }
+                }
                 fetchedBytes = max(fetchedBytes, Self.expectedFetchBytes)
                 step = .voice
-                let receipt = ["installed": ISO8601DateFormatter().string(from: Date()), "packages": Self.packages.joined(separator: ", ")]
-                try JSONSerialization.data(withJSONObject: receipt, options: .prettyPrinted).write(to: paths.runtimeReceipt)
-                // uv's download cache is as big as the engine and useless once it's installed.
-                let cache = paths.runtime.appendingPathComponent("uv-cache")
-                do { try FileManager.default.removeItem(at: cache) } catch {
-                    Log.error("couldn't clear the install cache at \(cache.path): \(error)")
-                }
                 state = .installing("Downloading the voice (\(modelSize))…")
                 installingModel = model
                 await server.allowDownload(of: model)

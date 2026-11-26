@@ -32,7 +32,7 @@ The voice engines:
 
 **Connections.** The first-run screen connects everything at once. To change it later, open **Connections** and click **Connect** or **Disconnect** next to a tool:
 
-- **Claude Code**: adds two hooks to `~/.claude/settings.json` and the `/speak` and `/read` commands. Start a new Claude Code session afterwards. If you run a second Claude Code login with its own folder (`CLAUDE_CONFIG_DIR`, say for work), connect that one from Terminal: `CLAUDE_CONFIG_DIR=~/.claude-work /Applications/Readback.app/Contents/Helpers/readback connect claude`. Swap `connect` for `disconnect` to undo it.
+- **Claude Code**: adds two hooks to `~/.claude/settings.json` and the `/readback:speak` and `/readback:read` commands. Start a new Claude Code session afterwards. If you run a second Claude Code login with its own folder (`CLAUDE_CONFIG_DIR`, say for work), connect that one from Terminal: `CLAUDE_CONFIG_DIR=~/.claude-work /Applications/Readback.app/Contents/Helpers/readback connect claude`. Swap `connect` for `disconnect` to undo it.
 - **Codex**: installs Readback's Codex plugin, which adds `/speak` and `/read` and two hooks. Codex won't run a plugin's hooks until you approve them, and only you can do that. In the Codex app: quit and reopen it, then open **Settings → Hooks** and approve both Readback hooks. In Codex in a terminal: type `/hooks` and approve them there. The Connections row says "One step left" until you've done it, then turns blue. It works the same in the Codex app and in the terminal, since both use `~/.codex`. If you only use Codex in a terminal, that's fine: Readback finds the `codex` command itself. It needs Codex 0.131.0 or newer (May 2026); Connect tells you if yours is older.
 - **Codex in Orca**: shows up only if you use Orca, which keeps its own Codex settings. Connect it, then type `/hooks` in an Orca Codex pane and approve both Readback hooks.
 - **OpenCode**: adds `~/.config/opencode/plugins/readback.js`. Restart OpenCode.
@@ -43,17 +43,27 @@ Before Readback changes one of those files it keeps the old version beside it, n
 
 Nothing is read out loud until you ask. Three ways to turn it on:
 
-- In a Claude Code session or a Codex chat, type `/speak on`. Only that session is read. `/speak off` stops it, and `/read` reads the last reply right away. In Codex, Readback answers these itself, so they never cost you a model reply.
+- In a Claude Code session, type `/readback:speak on`. Only that session is read. `/readback:speak off` stops it, and `/readback:read` reads the last reply right away. In a Codex chat the same commands are `/speak on`, `/speak off` and `/read`. Readback answers them itself in both tools, so they never cost you a model reply.
 - In **Reading**, switch on "Read every reply out loud" for a tool.
 - From the menu bar icon, **Read last reply** reads the most recent reply from any connected tool.
 
 The player: **Close** or **Esc** stops it. Sending a new message in the same session stops it too. Drag the player anywhere; it remembers where you put it. A reply that starts reading by itself plays a short **Pop** first and the voice follows a second later, so it doesn't catch you off guard; pick another sound, or none, in Reading → "Sound before reading".
 
+Music playing while it reads? Switch on Reading → "Lower other sounds while reading" and other apps drop to about a third of their volume during a reply, then come back. macOS asks for its **System Audio Recording** permission when you switch it on, because that's how Readback turns other apps down; the sound only passes through, and nothing is recorded or kept. The first reply after a quiet minute can make a small tick as Readback takes over the sound, right as the Pop plays.
+
 When several agents finish at once, the replies queue up instead of talking over each other: the player shows **+2** for two waiting, and the next one starts when the current one ends. Click the title in the player to see the list and jump to any of them. (Prefer being interrupted? Reading → "Switch to it".)
 
-Open Readback from Applications to get its window: **Home** shows your recent replies and a few numbers, **History** keeps the last 50 replies (search them, filter by tool, click to hear one again, right-click to copy or remove), and **Voices**, **Reading** and **Connections** hold the settings.
+Open Readback from Applications to get its window: **Home** shows what's being read and what's next, your recent sessions, and whether your tools are set up. Click a session to see its three newest replies, and **See all … replies** under them to see the rest in History. **History** keeps the last 50 replies (search them, filter by tool, click to hear one again, right-click to copy or remove), and **Voices**, **Reading** and **Connections** hold the settings.
 
 There's also a command-line tool at `/Applications/Readback.app/Contents/Helpers/readback`. Run it with no arguments to see what it does, for example `readback voice kokoro bm_george` to switch voices, `readback engine install` to install the natural voice from the terminal, or `readback say "hello"`.
+
+## Updating
+
+Click **Check for updates** at the bottom of Readback's sidebar, under the version number. Readback never checks on its own.
+
+If there's a newer version, click **Install and relaunch**. Readback downloads it, checks it's exactly the file GitHub lists for that release, swaps it in for your copy and reopens. Your tools stay connected, and Codex won't ask you to approve its hooks again. If you've turned on "Lower other sounds while reading", macOS may ask for that permission again.
+
+If Readback can't replace itself, for example because it's in a folder it isn't allowed to change, you'll see **Download page** instead. Download the zip from there and replace the app yourself.
 
 ## Uninstall
 

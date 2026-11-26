@@ -27,6 +27,9 @@ final class Preferences: ObservableObject {
     @Published var cueSound: String { didSet { defaults.set(cueSound, forKey: "cueSound") } }
     /// A reply that should be read arrives while another is playing: wait its turn, or cut in.
     @Published var switchToNewReplies: Bool { didSet { defaults.set(switchToNewReplies, forKey: "switchToNewReplies") } }
+    /// Turn other apps' sound down while a reply plays. Off unless switched on: it needs macOS's
+    /// System Audio Recording permission (see OtherAudioLowerer).
+    @Published var lowerOtherAudio: Bool { didSet { defaults.set(lowerOtherAudio, forKey: "lowerOtherAudio") } }
     /// Read every reply from a tool, whatever its sessions say. Published here for the Reading
     /// page; saved through `switches`, which the CLI reads too.
     @Published private(set) var autoRead: [Tool: Bool]
@@ -55,6 +58,7 @@ final class Preferences: ObservableObject {
         hideAfter = defaults.object(forKey: "hideAfter") as? Double ?? 4
         escCloses = defaults.object(forKey: "escCloses") as? Bool ?? true
         switchToNewReplies = defaults.bool(forKey: "switchToNewReplies")
+        lowerOtherAudio = defaults.bool(forKey: "lowerOtherAudio")
         cueSound = defaults.string(forKey: "cueSound") ?? "Pop"
         let switches = ReadingSwitches(defaults: .standard)
         autoRead = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, switches.readsEveryReply($0)) })

@@ -19,7 +19,7 @@ Sources/Readback         the app: menu bar, floating player (with the reply list
                          voice engines, engine installer, control server on 127.0.0.1:8908
 Sources/readback-cli     the `readback` command the tools' hooks run (bundled as Contents/Helpers/readback)
 integrations/claude-code/readback
-                         the Claude Code mod: /speak on|off, /read, the "Reading aloud · Stop" band
+                         the Claude Code mod: /readback:speak on|off, /readback:read (commands/*.md, answered by its command.run hooks), the "Reading aloud · Stop" band
 Resources                third-party notices, the app icon (AppIcon-1024.png: Cadence, rendered in
                          Blender) and its 18 pt menu bar template
 design/icon              the icon's Blender source and design notes (see NOTES.md to rebuild it)
@@ -31,10 +31,10 @@ docs/README-for-friends.md
 
 1. The tool's Stop hook runs `readback hook <tool>` with the hook's JSON on stdin. OpenCode has no hooks file, so a plugin does the same on `session.idle`.
 2. The CLI posts the reply to the app (`POST /speak` with `session` and `source`). It starts the app only if the reply is meant to be read, checking the same switches the app does (`ReadingSwitches`).
-3. Every reply goes into the history (`~/Library/Application Support/Readback/history.json`, last 50). The app reads it if that session switched read-aloud on (`/speak on`) or that tool's "read every reply" switch is on. `ReplyQueue` in Core makes every one of these decisions; the app carries out what it returns. If something is already playing it waits its turn (or cuts in, per Reading → "Switch to it"); when a reply ends, the oldest waiting one plays. Close/Esc means quiet: what was waiting stays in History unplayed. A tool's "new message" hook drops only that session's reading and waiting replies.
-4. The reply is cleaned (code blocks and tables become a short spoken note), split into sentence chunks, and voiced chunk by chunk. Playback starts on the first chunk while the rest are made.
+3. Every reply goes into the history (`~/Library/Application Support/Readback/history.json`, last 50). The app reads it if that session switched read-aloud on (`/readback:speak on` in Claude Code, `/speak on` in Codex) or that tool's "read every reply" switch is on. `ReplyQueue` in Core makes every one of these decisions; the app carries out what it returns. If something is already playing it waits its turn (or cuts in, per Reading → "Switch to it"); when a reply ends, the oldest waiting one plays. Close/Esc means quiet: what was waiting stays in History unplayed. A tool's "new message" hook drops only that session's reading and waiting replies.
+4. The reply is cleaned (code blocks and tables become a short spoken note), split into sentence chunks, and voiced chunk by chunk. Each chunk is rewritten for the ear just before it's voiced (`SpokenText`: paths as their file, no commit hashes, symbols as words); the player still shows the reply as written. Playback starts on the first chunk while the rest are made.
 5. The tool's UserPromptSubmit hook runs `readback stop`, which stops the reading only if it came from the same session. Codex's runs `readback prompt codex` instead, which does the same for an ordinary prompt and answers `/speak on|off` and `/read` itself, blocking the prompt so the model never sees it.
-6. `/speak` and `/read` from either tool go to `POST /command`, and the app writes the answer (`CommandAnswer`), so Claude Code and Codex say the same thing. Claude Code's `/read` sends the reply's text along, for when Readback wasn't running when the reply finished. The app still answers 0.4's `POST /replay {"session"}` with `{"played"}`, for a 0.4 helper running against a newer app. The other way round, a helper that gets 404 from `/command` is talking to an older app and tells the person to reopen Readback (`CommandAnswer.appIsOlder`).
+6. The commands from either tool (`/readback:speak` and `/readback:read` in Claude Code, `/speak` and `/read` in Codex) go to `POST /command`, and the app writes the answer (`CommandAnswer`, which names each tool's own commands), so Claude Code and Codex say the same thing. Claude Code's `/readback:read` sends the reply's text along, for when Readback wasn't running when the reply finished. The app still answers 0.4's `POST /replay {"session"}` with `{"played"}`, for a 0.4 helper running against a newer app. The other way round, a helper that gets 404 from `/command` is talking to an older app and tells the person to reopen Readback (`CommandAnswer.appIsOlder`).
 
 ### Codex
 
@@ -53,7 +53,7 @@ The on-device engine lives in `~/Library/Application Support/Readback/runtime`: 
 ```
 swift test                                   # core logic
 claude plugin test integrations/claude-code/readback
-./scripts/build-app.sh                       # needs uv on PATH (it's copied into the app)
+./scripts/build-app.sh                       # needs uv on PATH (it's copied into the app); the app and CLI are universal (arm64 and x86_64), uv isn't, since the engine it installs is Apple silicon only
 ```
 
 The JSON editor keeps every key, its order, numbers and escapes as they were, and writes the 2-space layout Claude Code and Codex use. A file Readback has nothing to change in is never rewritten. A file in another layout (compact, tabs) is rewritten in that 2-space layout the first time Readback edits it. `READBACK_ROUNDTRIP_FILES="a.json:b.json" swift test --filter RoundTrip` checks, read-only, that real config files in that layout come back byte for byte.
@@ -61,3 +61,12 @@ The JSON editor keeps every key, its order, numbers and escapes as they were, an
 ## Signing
 
 The build is ad-hoc signed. Without a Developer ID certificate it can't be notarized, so a downloaded copy needs System Settings → Privacy & Security → Open Anyway once. On first launch the app clears the download flag from its own bundle so the hooks can run its CLI.
+
+An ad-hoc signature changes with every build, and macOS ties the audio-capture permission ("lower other sounds") to it. After an update the app asks for that permission once more: silently when the grant still holds, with macOS's prompt when it doesn't.
+
+## Releasing
+
+1. Bump `VERSION` in `scripts/build-app.sh` (and the mod's or the Codex plugin's version if their files changed), then run `./scripts/build-app.sh`.
+2. Make a GitHub release tagged `v<VERSION>` and upload `build/Readback.zip` as `Readback.zip`. Check for updates relies on exactly that: the tag, the asset name, GitHub's sha256 for it, and `Readback/Readback.app` inside (see AGENTS.md).
+
+To try Check for updates without publishing anything, point a test copy at a fake release with `READBACK_UPDATES_URL=file:///path/to/latest.json`. The file has GitHub's shape (`tag_name`, `html_url`, and `assets` with `name`, `size`, `digest` and `browser_download_url`), and the URLs can be `file://` too. The relaunch passes every `READBACK_*` variable through, so the test copy comes back as itself.

@@ -289,7 +289,8 @@ public enum ControlRequest: Equatable {
 
 // MARK: Answers
 
-/// What Readback answers when someone types /speak or /read, the same in every tool.
+/// What Readback answers when someone types its commands, worded the same in every tool and
+/// naming that tool's own commands.
 public enum CommandAnswer {
     /// /command answered 404: the Readback that's running predates it (the app was replaced while
     /// it ran), and only reopening it brings the two back in step.
@@ -298,10 +299,10 @@ public enum CommandAnswer {
     public static func speak(asked: Bool?, isOn: Bool, everyReply: Bool, tool: Tool) -> String {
         let here = "this \(tool.conversation)"
         if asked == nil, everyReply {
-            return "Read-aloud is on in \(here), because Readback reads every \(tool.name) reply. Switch that off in Readback's Reading page; /read reads the last reply."
+            return "Read-aloud is on in \(here), because Readback reads every \(tool.name) reply. Switch that off in Readback's Reading page; \(tool.readCommand) reads the last reply."
         }
         if asked == nil {
-            return "Read-aloud is \(isOn ? "on" : "off") in \(here). /speak on or /speak off changes it, /read reads the last reply."
+            return "Read-aloud is \(isOn ? "on" : "off") in \(here). \(tool.speakCommand) on or \(tool.speakCommand) off changes it, \(tool.readCommand) reads the last reply."
         }
         if !isOn, everyReply {
             return "Read-aloud is off for \(here), but Readback is set to read every \(tool.name) reply. Switch that off in Readback's Reading page."
@@ -312,4 +313,14 @@ public enum CommandAnswer {
     public static func read(played: Bool, tool: Tool) -> String {
         played ? "Reading the last reply." : "There's no reply in this \(tool.conversation) to read yet."
     }
+}
+
+extension Tool {
+    /// The command that switches read-aloud for a session, as the person types it there.
+    /// Claude Code's are the mod's own `/readback:speak` and `/readback:read` (owner, 2026-11-25:
+    /// the bare /speak and /read went away). Codex keeps the names its skill menu sends.
+    public var speakCommand: String { self == .claude ? "/readback:speak" : "/speak" }
+
+    /// The command that reads the last reply now.
+    public var readCommand: String { self == .claude ? "/readback:read" : "/read" }
 }

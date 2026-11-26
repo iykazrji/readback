@@ -17,7 +17,7 @@ struct ConnectionSettings: View {
             } header: {
                 Text("Coding tools")
             } footer: {
-                FormNote("Connecting hands each finished reply to Readback and stops the reading when you send a new message. Claude Code and Codex also get /speak and /read. Before Readback changes one of a tool's files, it keeps the old version beside it as <name>.before-readback.")
+                FormNote("Connecting hands each finished reply to Readback and stops the reading when you send a new message. Claude Code also gets /readback:speak and /readback:read, and Codex /speak and /read. Before Readback changes one of a tool's files, it keeps the old version beside it as <name>.before-readback.")
             }
         }
         .formStyle(CardFormStyle())
@@ -45,12 +45,15 @@ private struct ConnectionRow: View {
     let lastReply: Date?
     let connect: () -> Void
     let disconnect: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         LabeledContent {
             button
+                .transition(.opacity)
+                .id(stateKey)
         } label: {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {   // icon, words and button share one middle line
                 ToolTile(tool: home.tool, connected: ConnectionText.isWorking(row))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(home.title)
@@ -63,6 +66,12 @@ private struct ConnectionRow: View {
             }
         }
         .padding(.vertical, 2)
+        .animation(Motion.spring(reduceMotion), value: stateKey)
+    }
+
+    /// Changes when the row's state does (not when "last reply" ticks on), for its animation.
+    private var stateKey: String {
+        "\(String(describing: row?.status))|\(row?.busy != nil)|\(row?.error != nil)"
     }
 
     @ViewBuilder private var button: some View {
@@ -76,7 +85,7 @@ private struct ConnectionRow: View {
     /// Whatever state it's in, a row with anything of Readback's in it can be disconnected.
     @ViewBuilder private var actionButton: some View {
         switch row?.status {
-        case .connected?, .waitingForApproval?: Button("Disconnect", action: disconnect)
+        case .connected?, .waitingForApproval?: Button("Disconnect", action: disconnect).buttonStyle(.readback(.destructive))
         case .stale?, .incomplete?: repairButtons("Reconnect")
         case .outdated?, .updateAvailable?: repairButtons("Update")
         default: Button("Connect", action: connect).disabled(row?.installed != true)
@@ -85,7 +94,7 @@ private struct ConnectionRow: View {
 
     private func repairButtons(_ title: String) -> some View {
         HStack(spacing: 8) {
-            Button("Disconnect", action: disconnect)
+            Button("Disconnect", action: disconnect).buttonStyle(.readback(.destructive))
             Button(title, action: connect)
         }
     }
@@ -115,7 +124,7 @@ enum ConnectionText {
         case .incomplete:
             return home.tool == .codex
                 ? "Readback's Codex plugin is switched on but isn't installed, or its hooks are missing. Reconnect to put it back."
-                : "Part of Readback's setup is missing here (a hook or the /speak commands). Reconnect to put it back."
+                : "Part of Readback's setup is missing here (a hook or its commands). Reconnect to put it back."
         case .outdated:
             return "Connected the old way, without /speak or /read. Update to switch to Readback's Codex plugin. Codex then asks you to approve its hooks once more."
         case .updateAvailable:
@@ -124,7 +133,7 @@ enum ConnectionText {
             return "One step left. \(howToApprove(home))"
         case .connected:
             switch home.tool {
-            case .claude: return "Connected. In a session: /speak on, /speak off, /read. Start a new session to pick up the commands."
+            case .claude: return "Connected. In a session: /readback:speak on, /readback:speak off, /readback:read. Start a new session to pick up the commands."
             case .codex:
                 if let lastReply {
                     return "Working. Last reply \(lastReply.formatted(.relative(presentation: .named))). In a chat: /speak on, /speak off, /read."
@@ -134,7 +143,7 @@ enum ConnectionText {
             }
         case .notConnected:
             switch home.tool {
-            case .claude: return "Edits ~/.claude/settings.json and adds the /speak and /read commands."
+            case .claude: return "Edits ~/.claude/settings.json and adds the /readback:speak and /readback:read commands."
             case .codex: return "Installs Readback's Codex plugin, with /speak and /read."
             case .opencode: return "Adds ~/.config/opencode/plugins/readback.js."
             }
@@ -147,22 +156,18 @@ enum ConnectionText {
 struct ToolTile: View {
     let tool: Tool
     let connected: Bool
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(connected ? ControlMetrics.primaryText(scheme) : .white)
             .frame(width: 28, height: 28)
-            .background(connected ? Color.accentColor : Color.gray.opacity(0.6),
+            // Connected is the solid plate, not the accent (owner's black-and-white look, 2026-11-25).
+            .background(connected ? ControlMetrics.primaryFill(scheme) : Color.gray.opacity(0.6),
                         in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
             .accessibilityHidden(true)
     }
 
-    private var symbol: String {
-        switch tool {
-        case .claude: return "terminal"
-        case .codex: return "chevron.left.forwardslash.chevron.right"
-        case .opencode: return "curlybraces"
-        }
-    }
+    private var symbol: String { tool.symbol }
 }

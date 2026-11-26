@@ -51,23 +51,35 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private let navigation = Navigation()
 
     @MainActor final class Navigation: ObservableObject {
-        @Published var section: MainSection = .home
+        @Published var section: MainSection = .home {
+            // Leaving History drops the session it was showing, so it's whole next time.
+            didSet { if section != .history { historySession = nil } }
+        }
+        /// The one session History shows, set by Home's "See all N replies"; nil shows them all.
+        @Published var historySession: SessionSummary?
         /// The first-run sheet that connects the coding tools.
         @Published var showingSetup = false
+
+        /// History with only this session's replies.
+        func showHistory(of session: SessionSummary?) {
+            historySession = session
+            section = .history
+        }
     }
 
     init(app: AppDelegate) {
         self.app = app
         let root = MainView(app: app, navigation: navigation)
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 580),
+        // Moves itself when a title bar drag starts: macOS 27.2 drops the system's (see the class).
+        window = SelfDraggingWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 580),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
-        // An opaque window, after superwhisper: a page colour with the sidebar a step lighter.
-        // (It used to let the desktop show through; the owner found that too busy, 2026-11-24.)
+        // Translucent: each pane draws the desktop blurred under its own tint (GlassBackground).
+        // The owner chose this on 2026-11-25, after an opaque window on 2026-11-24.
         let host = NSHostingView(rootView: root)
         window.contentView = host
-        window.isOpaque = true
-        window.backgroundColor = WindowColors.pageNS
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         // An empty toolbar keeps the title bar at its toolbar height, so the window buttons sit
@@ -111,6 +123,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 struct MainView: View {
     let app: AppDelegate
     @ObservedObject var navigation: MainWindowController.Navigation
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
@@ -119,17 +132,33 @@ struct MainView: View {
                 .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(200)
         } detail: {
-            detail
+            // A new page fades in and settles 6 pt up; a plain fade with Reduce Motion.
+            ZStack(alignment: .topLeading) {
+                detail
+                    .id(navigation.section)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 6)))
+            }
+            .animation(Motion.spring(reduceMotion), value: navigation.section)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(WindowColors.page)
+                .background(GlassBackground(.underWindowBackground, tint: WindowColors.pageTint))
                 // The page title sits in the title bar's row, level with the window buttons.
                 .ignoresSafeArea(.container, edges: .top)
+                // The window's own title ("Readback") is hidden, but on macOS 26 the split view
+                // drew it in the detail column's toolbar anyway, above each page's title (seen on
+                // 26.3.1, 2026-11-26; 27.2 doesn't draw it). The page title is the only title.
+                .toolbar(removing: .title)
         }
         .frame(minWidth: 760, minHeight: 500)
-        .containerBackground(WindowColors.page, for: .window)
+        .containerBackground(.clear, for: .window)   // the panes draw their own glass
+        // Every plain button in the window gets Readback's own look (Components/Buttons.swift).
+        .buttonStyle(.readback(.secondary))
+        // Anything still stock (a small spinner, a text selection) draws in black and white, not
+        // the system accent: the owner's black-and-white look, 2026-11-25.
+        .tint(.primary)
         .sheet(isPresented: $navigation.showingSetup) {
             SetupSheet(connections: app.connections, replies: app.replies, runtime: app.runtime, downloads: app.downloads, prefs: app.prefs,
                        openConnections: { navigation.section = .connections })
+                .tint(.primary)
         }
     }
 
@@ -137,13 +166,17 @@ struct MainView: View {
         switch navigation.section {
         case .home:
             HomePage(app: app, reader: app.reader, replies: app.replies, connections: app.connections,
-                     seeAll: { navigation.section = .history }, openConnections: { navigation.section = .connections })
+                     prefs: app.prefs, runtime: app.runtime,
+                     seeAll: { navigation.showHistory(of: nil) }, openSession: { navigation.showHistory(of: $0) },
+                     openConnections: { navigation.section = .connections },
+                     openVoices: { navigation.section = .voices })
         case .history:
-            HistoryPage(app: app, reader: app.reader, replies: app.replies,
+            HistoryPage(app: app, reader: app.reader, replies: app.replies, session: $navigation.historySession,
                         openConnections: { navigation.section = .connections })
         case .voices:
-            Page(title: "Voices") { VoicesPage(prefs: app.prefs, runtime: app.runtime, downloads: app.downloads,
-                                                  preview: app.preview, downloadNow: app.downloadVoice, download: app.download, cancelDownload: app.cancelDownload) }
+            // Builds its own header: the engine bar pins under the title (VoicesPage.engineBar).
+            VoicesPage(prefs: app.prefs, runtime: app.runtime, downloads: app.downloads,
+                       preview: app.preview, downloadNow: app.downloadVoice, download: app.download, cancelDownload: app.cancelDownload)
         case .reading:
             Page(title: "Reading") { ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition) }
         case .connections:
@@ -170,9 +203,13 @@ struct Page<Content: View>: View {
 /// Space between the window's edge and a page's content, shared so pages line up when you switch.
 enum PageMetrics {
     /// Matches where a grouped Form puts its sections, so card pages and settings pages agree.
-    static let inset: CGFloat = 24
-    /// The title bar's row, which the window buttons sit in.
-    static let headerHeight: CGFloat = 38
+    static let inset: CGFloat = Spacing.xl
+    /// The page's title bar: the window buttons' 38 pt row and room below it, with the title at
+    /// its bottom, so titles sit clear of the window's top edge. (Owner: the title was too close
+    /// to the top, 2026-11-25.)
+    /// 61 since the controls grew to 34 pt (2026-11-25): the title row is one control tall on
+    /// every page, and this keeps the title's centre 36 pt from the top, where it sat before.
+    static let headerHeight: CGFloat = 61
 }
 
 extension View {
@@ -208,7 +245,8 @@ private struct PageHeader<Header: View>: ViewModifier {
                                                      .init(color: .black, location: 0.62),
                                                      .init(color: .clear, location: 1)],
                                              startPoint: .top, endPoint: .bottom))
-                        .frame(height: PageMetrics.headerHeight + 22)
+                        // The header's own height (title, plus anything pinned under it) and 22 pt more.
+                        .padding(.bottom, -22)
                         .opacity(scrolled ? 1 : 0)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -230,12 +268,19 @@ struct PageTitle<Trailing: View>: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(.system(size: 17, weight: .bold))
+                // The title keeps its room; the controls beside it give way first (History's
+                // session chip pushed it out at 760 pt, 2026-11-26).
+                .fixedSize()
+                .layoutPriority(1)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             trailing()
         }
+        // One control tall whether or not the page has controls, so titles sit at the same height everywhere.
+        .frame(height: ControlMetrics.height)
         .padding(.horizontal, PageMetrics.inset)
-        .frame(height: PageMetrics.headerHeight)   // centred on the window buttons' row
+        .padding(.bottom, Spacing.s)
+        .frame(height: PageMetrics.headerHeight, alignment: .bottom)
     }
 }
 
@@ -256,7 +301,6 @@ private struct Sidebar: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(Self.groups.enumerated()), id: \.offset) { index, group in
-                    if index > 0 { Color.clear.frame(height: 14) }
                     ForEach(group, id: \.self) { section in row(section) }
                 }
             }
@@ -280,26 +324,16 @@ private struct Sidebar: View {
 
             VStack(spacing: 8) {
                 NowPlayingCard(app: app, reader: reader, prefs: prefs, runtime: app.runtime, showVoices: { selection = .voices })
-                Button {
-                    selection = .about
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("Readback").font(.system(size: 13, weight: .semibold))
-                        Text(Bundle.main.version).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                }
-                .buttonStyle(SidebarTileStyle(isSelected: selection == .about, radius: Radius.sidebarCard))
-                .accessibilityLabel("About Readback")
-                .accessibilityValue(Bundle.main.version)
+                VersionCard(updater: app.updater, downloads: app.downloads, runtime: app.runtime,
+                            connections: app.connections, aboutSelected: selection == .about,
+                            openAbout: { selection = .about })
             }
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
         .padding(.bottom, 10)
         .frame(maxHeight: .infinity)
-        .background(WindowColors.sidebar.ignoresSafeArea())
+        .background(GlassBackground(.sidebar, tint: WindowColors.sidebarTint).ignoresSafeArea())
     }
 
     private func row(_ section: MainSection) -> some View {
@@ -310,7 +344,9 @@ private struct Sidebar: View {
             HStack(spacing: 10) {
                 IconTile(symbol: section.symbol, color: section.tint)
                 Text(section.title)
-                    .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                    // One weight whether selected or not: a heavier selected title reflowed the
+                    // row. The row's fill says which one is selected.
+                    .font(.system(size: 13))
                     .foregroundStyle(.primary)
                 Spacer(minLength: 4)
                 if section == .history, replies.waitingCount > 0 {
@@ -390,16 +426,15 @@ private struct NowPlayingCard: View {
         if reader.isSpeaking {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Image(systemName: "waveform")
-                        .symbolEffect(.variableColor.iterative, isActive: reader.phase == .playing)
-                        .accessibilityHidden(true)
+                    Waveform(playing: reader.phase == .playing, height: 12)
                     Text(reader.phase == .paused ? "Paused" : "Reading").font(.system(size: 11, weight: .semibold))
                         .lineLimit(1)
                         .fixedSize()
                     Spacer()
                     Button("Stop") { app.stopEverything() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11))
+                        .buttonStyle(.readback(.quiet))
+                        .controlSize(.small)   // the card's own scale; a full-size button towered over it
+                        .padding(.vertical, -6)   // keeps the card's first row its old height
                 }
                 Text(reader.title).font(.system(size: 12)).lineLimit(1).truncationMode(.tail)
             }
@@ -428,20 +463,7 @@ private struct NowPlayingCard: View {
     /// The same height reading or idle, so the sidebar doesn't jump when a reply starts.
     private static let height: CGFloat = 72
 
-    private var voice: (engine: String, name: String) {
-        // The voice picked, and what's actually heard until its engine is in.
-        if prefs.engine.needsRuntime, !runtime.isInstalled {
-            return (prefs.engine.title.components(separatedBy: " (").first ?? prefs.engine.title, "macOS voice for now")
-        }
-        switch prefs.engine {
-        case .system: return ("macOS voice", prefs.systemVoice.isEmpty ? "System default" : (SystemVoice.voices().first { $0.identifier == prefs.systemVoice }?.name ?? ""))
-        case .kokoro: return ("Kokoro", VoiceCatalog.kokoroVoice(prefs.kokoroVoice)?.name ?? prefs.kokoroVoice)
-        case .melo: return ("MeloTTS", VoiceCatalog.meloVoices.first { $0.id == prefs.meloVoice }?.name ?? prefs.meloVoice)
-        case .soprano: return ("Soprano", "")
-        case .qwen3: return ("Qwen3-TTS", VoiceCatalog.qwen3Voices.first { $0.id == prefs.qwen3Voice }?.name ?? prefs.qwen3Voice)
-        case .custom: return ("Custom model", prefs.voiceSetup.model)
-        }
-    }
+    private var voice: (engine: String, name: String) { VoiceSummary.of(prefs, runtime) }
 }
 
 /// The sidebar's bottom tiles: a card surface that lifts on hover and press.

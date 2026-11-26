@@ -116,8 +116,11 @@ public struct ReplyHistory: Codable, Equatable {
     /// and within the limit (the oldest finished ones give way, as in `add`).
     public mutating func restore(_ cleared: [Reply]) {
         let present = Set(replies.map(\.id))
-        replies += cleared.filter { !present.contains($0.id) }
-        replies.sort { $0.received > $1.received }
+        // Both lists are newest first, and what arrived since comes before what was cleared, so
+        // a tie in time keeps that order (a plain sort isn't stable).
+        let merged = (replies + cleared.filter { !present.contains($0.id) }).enumerated()
+        replies = merged.sorted { $0.element.received != $1.element.received ? $0.element.received > $1.element.received : $0.offset < $1.offset }
+            .map(\.element)
         trim()
     }
 
@@ -135,13 +138,32 @@ public struct ReplyHistory: Codable, Equatable {
     public static func load(from url: URL) throws -> ReplyHistory? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            // Fractional seconds since 0.5; whole seconds before.
+            guard let date = Self.timeFormat(fractional: true).date(from: text) ?? Self.timeFormat(fractional: false).date(from: text) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "not an ISO 8601 time"))
+            }
+            return date
+        }
         return try decoder.decode(ReplyHistory.self, from: Data(contentsOf: url))
     }
 
+    /// Times keep their fractions of a second: two replies within one second otherwise come back
+    /// tied, and Home could show the older one as a session's newest (deep review 2026-11-26, P2-9).
     public func save(to url: URL) throws {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        let format = Self.timeFormat(fractional: true)
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(format.string(from: date))
+        }
         try PrivateFiles.write(encoder.encode(self), to: url)
+    }
+
+    private static func timeFormat(fractional: Bool) -> ISO8601DateFormatter {
+        let format = ISO8601DateFormatter()
+        format.formatOptions = fractional ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]
+        return format
     }
 }

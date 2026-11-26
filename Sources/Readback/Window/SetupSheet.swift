@@ -49,6 +49,7 @@ struct SetupSheet: View {
         }
         .padding(24)
         .frame(width: 520)
+        .buttonStyle(.readback(.secondary))
         // Esc closes it on every screen, not only where there's a Cancel-style button.
         .onExitCommand { dismiss() }
         .onAppear {
@@ -76,7 +77,7 @@ struct SetupSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button("Done") { dismiss() }.buttonStyle(.readback(.primary)).keyboardShortcut(.defaultAction).buttonStyle(.readback(.primary))
             }
         }
     }
@@ -95,11 +96,11 @@ struct SetupSheet: View {
                     Toggle(isOn: binding(for: home)) {
                         ChoiceLabel(tile: ToolTile(tool: home.tool, connected: working), title: home.title,
                                     detail: working ? "Already connected"
-                                        : row(home)?.status == .outdated ? "Set up by an older Readback. This updates it and adds /speak and /read."
+                                        : row(home)?.status == .outdated ? "Set up by an older Readback. This updates it and adds \(home.tool.speakCommand) and \(home.tool.readCommand)."
                                         : row(home)?.status == .updateAvailable ? "A newer version of Readback's plugin is ready. This installs it."
                                         : nil)
                     }
-                    .toggleStyle(.checkbox)
+                    .toggleStyle(.readbackCheckbox)
                     .disabled(working)
                 }
                 if voiceOffered {
@@ -107,7 +108,7 @@ struct SetupSheet: View {
                         ChoiceLabel(tile: VoiceTile(ready: false), title: "Natural voice",
                                     detail: "Kokoro, downloaded to this Mac (\(Self.voiceTotal.formatted(.byteCount(style: .file)))). Until it's ready, replies use the macOS voice.")
                     }
-                    .toggleStyle(.checkbox)
+                    .toggleStyle(.readbackCheckbox)
                 }
             }
             FormNote("Connecting changes each tool's settings so its replies reach Readback. The old file stays beside it as <name>.before-readback, and Disconnect in Connections undoes it.")
@@ -115,6 +116,7 @@ struct SetupSheet: View {
                 Spacer()
                 Button("Not now") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Set up") { start() }
+                    .buttonStyle(.readback(.primary))
                     .keyboardShortcut(.defaultAction)
                     .disabled(chosen.isEmpty && !(voiceOffered && getVoice))
             }
@@ -148,7 +150,7 @@ struct SetupSheet: View {
                 list.append(Step(id: home.id + ".approve", title: orca ? "Approve Readback in Orca" : "Approve Readback in Codex",
                                  detail: approveDetail(home, state: approve), state: approve))
             } else {
-                let done = home.tool == .claude ? "Connected. Start a new Claude Code session to get /speak and /read."
+                let done = home.tool == .claude ? "Connected. Start a new Claude Code session to get /readback:speak and /readback:read."
                     : "Connected. Restart OpenCode to load it."
                 list.append(Step(id: home.id, title: "Connect \(home.title)",
                                  detail: state == .failed ? (r?.error ?? "") : state == .done ? done : "Connecting…", state: state))
@@ -186,7 +188,7 @@ struct SetupSheet: View {
             let model = kokoro?.received ?? (runtime.step == .voice ? VoiceCatalog.kokoroBytes : 0)
             let got = engine + model
             let fraction = min(Double(got) / Double(Self.voiceTotal), 0.99)
-            let amount = "\(got.formatted(.byteCount(style: .file))) of \(Self.voiceTotal.formatted(.byteCount(style: .file)))"
+            let amount = DownloadAmount.text(received: got, total: Self.voiceTotal)
             return Step(id: "voice", title: "Get the natural voice", detail: "\(phase)…", state: .working,
                         meter: (fraction, amount))
         case .notInstalled, .unsupported:
@@ -250,7 +252,7 @@ struct SetupSheet: View {
                     dismiss()
                 }
                 Spacer()
-                Button(title == "All set" ? "Done" : "Close") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button(title == "All set" ? "Done" : "Close") { dismiss() }.keyboardShortcut(.defaultAction).buttonStyle(.readback(.primary))
             }
         }
     }
@@ -260,7 +262,7 @@ struct SetupSheet: View {
         let picked = found.filter(chosen.contains)
         var lines: [String] = []
         if picked.contains(where: { $0.tool == .claude }) {
-            lines.append("In a new Claude Code session, type /speak on, then ask anything. Readback reads the reply.")
+            lines.append("In a new Claude Code session, type /readback:speak on, then ask anything. Readback reads the reply.")
         }
         let codex = picked.filter { $0.tool == .codex }
         if !codex.isEmpty {
@@ -317,7 +319,10 @@ struct SetupSheet: View {
             HStack(alignment: .top, spacing: 10) {
                 tile
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
+                    // A lone name sits level with the tile's centre: its line is as tall as the tile.
+                    // With a detail line under it, the name starts at the tile's top instead, so the
+                    // pair reads as one block beside the tile (owner, 2026-11-25).
+                    Text(title).frame(height: detail == nil ? 28 : nil)
                     if let detail {
                         Text(detail)
                             .font(.caption)
@@ -331,6 +336,7 @@ struct SetupSheet: View {
 
     private struct StepRow: View {
         let step: Step
+        @Environment(\.colorScheme) private var scheme
 
         var body: some View {
             HStack(alignment: .top, spacing: 12) {
@@ -341,10 +347,11 @@ struct SetupSheet: View {
                         if step.state == .yourTurn {
                             Text("Your turn")
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(.primary)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 2)
-                                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                .background(ControlMetrics.fill(scheme), in: Capsule())
+                                .overlay(Hairline(Capsule(), ControlMetrics.edge(scheme)))
                         }
                     }
                     Text(step.detail)
@@ -354,8 +361,7 @@ struct SetupSheet: View {
                         .textSelection(.enabled)
                     if let meter = step.meter {
                         VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: meter.fraction)
-                                .progressViewStyle(.linear)
+                            Meter(fraction: meter.fraction)
                             Text(meter.amount)
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
@@ -392,7 +398,7 @@ struct SetupSheet: View {
                 case .waiting: Image(systemName: "circle").foregroundStyle(.tertiary)
                 case .working: ProgressView().controlSize(.small)
                 case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                case .yourTurn: Image(systemName: "arrow.right.circle.fill").foregroundStyle(Color.accentColor)
+                case .yourTurn: Image(systemName: "arrow.right.circle.fill").foregroundStyle(.primary)
                 case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                 }
             }
@@ -406,13 +412,14 @@ struct SetupSheet: View {
 /// The voice's tile, drawn like the tools' tiles: tinted once the voice is ready.
 private struct VoiceTile: View {
     let ready: Bool
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Image(systemName: "waveform")
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(ready ? ControlMetrics.primaryText(scheme) : .white)
             .frame(width: 28, height: 28)
-            .background(ready ? Color.accentColor : Color.gray.opacity(0.6),
+            .background(ready ? ControlMetrics.primaryFill(scheme) : Color.gray.opacity(0.6),
                         in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
             .accessibilityHidden(true)
     }

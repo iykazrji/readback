@@ -13,11 +13,27 @@ struct VoicesPage: View {
     let download: (String) -> Void
     let cancelDownload: (String) -> Void
     @State private var confirmRemove = false
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var engineIsThereOrComing: Bool {
+    /// The engine isn't here yet, is on its way, or its install failed: the pinned bar at the top.
+    /// Every voice but the macOS one needs it, so it's the first thing on the page until it's in
+    /// (owner, 2026-11-25: "let that be there as the first thing they see"; one wording whatever
+    /// voice is picked).
+    private var engineBarShows: Bool {
         switch runtime.state {
-        case .installing, .installed, .failed: return true
-        case .notInstalled, .unsupported: return false
+        case .notInstalled, .installing: return true
+        case .failed: return !runtime.removeFailed
+        case .installed, .unsupported: return false
+        }
+    }
+
+    private var engineCardShows: Bool {
+        switch runtime.state {
+        case .installed: return true
+        case .failed: return runtime.removeFailed
+        case .unsupported: return prefs.engine.needsRuntime
+        case .notInstalled, .installing: return false
         }
     }
 
@@ -36,27 +52,14 @@ struct VoicesPage: View {
                 FormNote(engineNote)
             }
 
-            // Shown whatever voice is picked once the engine is there or on its way, so Cancel and
-            // Remove are always reachable.
-            if prefs.engine.needsRuntime || engineIsThereOrComing {
+            // Installing, its progress and a failed install live in the bar pinned at the top
+            // (`engineBar`); this card is for an engine that's here (Remove…), a removal that
+            // failed, and Macs that can't run it.
+            if engineCardShows {
                 Section("On-device engine") {
                     runtimeRow
                     // The listed voices download from their own rows above; a custom model has none.
                     if runtime.state == .installed, prefs.engine == .custom { modelRow }
-                }
-            } else if runtime.state == .notInstalled {
-                Section {
-                    LabeledContent {
-                        Button("Get it") {
-                            prefs.engine = .kokoro
-                            install()
-                        }
-                    } label: {
-                        Text("Want a more natural voice?")
-                        Text("Kokoro sounds like a person reading. It downloads once (about 1.8 GB in all), then runs on your Mac with no account.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
             }
 
@@ -84,13 +87,9 @@ struct VoicesPage: View {
                 if prefs.engine == .qwen3 {
                     // Trailing, like the voice picker above it, so the rows' controls line up.
                     LabeledContent("Delivery") {
-                        Picker("Delivery", selection: $prefs.qwen3Delivery) {
-                            ForEach(Delivery.allCases) { Text($0.title).tag($0) }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
+                        Segmented("Delivery", selection: $prefs.qwen3Delivery,
+                                  options: Delivery.allCases.map { ($0.title, $0) })
                         .fixedSize()
-                        .accessibilityLabel("Delivery")
                     }
                 }
             } header: {
@@ -102,6 +101,14 @@ struct VoicesPage: View {
             }
         }
         .formStyle(CardFormStyle())
+        .scrollContentBackground(.hidden)
+        // The bar is part of the page's header, so it stays put and gets the header's frosting
+        // when the list scrolls under it.
+        .pageHeader(VStack(spacing: 0) {
+            PageTitle("Voices")
+            engineBar
+        }
+        .animation(Motion.spring(reduceMotion), value: engineBarShows))
         .confirmationDialog("Remove the on-device voice engine?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) { runtime.startRemoving() }
         } message: {
@@ -151,11 +158,7 @@ struct VoicesPage: View {
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
-                    if let fraction = download.fraction {
-                        ProgressView(value: fraction)
-                    } else {
-                        ProgressView().progressViewStyle(.linear)
-                    }
+                    Meter(fraction: download.fraction)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Downloading \(model.name)")
@@ -164,6 +167,7 @@ struct VoicesPage: View {
                 let failure = downloads.failure?.model == model.id ? downloads.failure?.reason : nil
                 LabeledContent {
                     Button(failure == nil ? "Download now" : "Try again", action: downloadNow)
+                        .buttonStyle(.readback(.primary))
                 } label: {
                     Text(failure == nil ? "\(model.name) isn't downloaded yet" : "\(model.name) didn't finish downloading")
                     Text(failure ?? downloadNote(size: model.size))
@@ -208,39 +212,12 @@ struct VoicesPage: View {
         case .unsupported:
             Text("The on-device engine needs a Mac with Apple silicon. Replies use the macOS voice.")
                 .foregroundStyle(.secondary)
-        case .notInstalled:
-            LabeledContent {
-                Button("Install") { install() }
-            } label: {
-                Text("Not installed")
-                Text(installNote).font(.caption).foregroundStyle(.secondary)
-            }
-        case .installing(let step):
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(step)
-                    Spacer()
-                    Button("Cancel") { runtime.cancel() }
-                }
-                if let download = downloads.active {
-                    // The install's last step is the voice's first download.
-                    ProgressView(value: download.fraction ?? 0)
-                    Text(download.amount)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                if let line = runtime.lastLines.last {
-                    Text(line)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
+        case .notInstalled, .installing:
+            EmptyView()   // in the pinned bar
         case .installed:
             LabeledContent {
                 Button("Remove…") { confirmRemove = true }
+                    .buttonStyle(.readback(.destructive))
             } label: {
                 Text("Installed")
                 Text("Kept in ~/Library/Application Support/Readback/runtime.").font(.caption).foregroundStyle(.secondary)
@@ -261,10 +238,89 @@ struct VoicesPage: View {
         }
     }
 
-    private var installNote: String {
-        let model = prefs.engine.model.map { " and the voice (\($0.size))" } ?? ""
-        return "Downloads Python and mlx-audio (\(Runtime.size))\(model). Until then, replies use the macOS voice."
+    // MARK: The engine bar
+
+    @ViewBuilder private var engineBar: some View {
+        if engineBarShows {
+            let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+            Group {
+                switch runtime.state {
+                case .installing(let step):
+                    installProgress(step)
+                case .failed(let message):
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("The install didn't finish").font(.system(size: 13, weight: .semibold))
+                                // Two lines at most, the whole message on hover (and in the log). Text that
+                                // could grow to any height in the page header sent SwiftUI into a layout
+                                // loop that blanked the whole window (found 2026-11-25).
+                                Text(message)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .help(message)
+                            }
+                            Spacer(minLength: 12)
+                            Button("Try again") { runtime.retry(for: prefs) }
+                                .buttonStyle(.readback(.primary))
+                        }
+                    }
+                default:
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("The on-device engine isn't installed").font(.system(size: 13, weight: .semibold))
+                            Text("Kokoro, MeloTTS, Soprano and Qwen3 need it. \(Runtime.size.prefix(1).uppercased())\(Runtime.size.dropFirst()).")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 12)
+                        Button("Install") { install() }
+                            .buttonStyle(.readback(.primary))
+                    }
+                }
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, Spacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Solid underneath, so the list scrolling under the bar doesn't show through it.
+            .background { ZStack { shape.fill(WindowColors.page); shape.fill(WindowColors.card) } }
+            .overlay { Hairline(shape, ControlMetrics.edge(scheme)) }
+            .padding(.horizontal, PageMetrics.inset)
+            .padding(.top, Spacing.xs)
+            .padding(.bottom, Spacing.s)
+            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .contain)
+        }
     }
+
+    private func installProgress(_ step: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(step).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button("Cancel") { runtime.cancel() }
+            }
+            if let download = downloads.active {
+                // The install's last step is the voice's first download.
+                Meter(fraction: download.fraction)
+                // Under the bar's right end, where the amount's one-width padding doesn't show.
+                Text(download.amount)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            if let line = runtime.lastLines.last {
+                Text(line)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+    }
+
 
     private func install() {
         runtime.install(for: prefs)
@@ -275,21 +331,14 @@ struct VoicesPage: View {
     @ViewBuilder private var voicePicker: some View {
         switch prefs.engine {
         case .system:
-            LabeledContent("Voice") {
-                Picker("Voice", selection: $prefs.systemVoice) {
-                    Text("System default").tag("")
-                    ForEach(systemGroups, id: \.name) { group in
-                        Section(group.name) {
-                            ForEach(group.voices, id: \.identifier) { voice in
-                                Text(Self.label(voice)).tag(voice.identifier)
-                            }
-                        }
-                    }
-                }
-                .labelsHidden()
-                .fixedSize()
-            }
-            .accessibilityLabel("Voice")
+            // Sits in the "Speaks as" row, so it takes that name rather than adding a row label of its own.
+            Dropdown("Speaks as", selection: $prefs.systemVoice,
+                     sections: [Dropdown.Section(title: nil, options: [.init(title: "System default", value: "")])]
+                        + systemGroups.map { group in
+                            Dropdown.Section(title: group.name,
+                                             options: group.voices.map { .init(title: Self.label($0), value: $0.identifier) })
+                        })
+            .fixedSize()
         case .kokoro:
             catalogPicker(VoiceCatalog.kokoroVoices, selection: $prefs.kokoroVoice)
         case .melo:
@@ -317,18 +366,11 @@ struct VoicesPage: View {
     private func catalogPicker(_ voices: [VoiceOption], selection: Binding<String>) -> some View {
         let groups = Dictionary(grouping: voices, by: \.group)
         let order = voices.map(\.group).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-        return LabeledContent("Voice") {
-            Picker("Voice", selection: selection) {
-                ForEach(order, id: \.self) { group in
-                    Section(group) {
-                        ForEach(groups[group] ?? []) { Text($0.name).tag($0.id) }
-                    }
-                }
-            }
-            .labelsHidden()
+        return Dropdown("Speaks as", selection: selection,
+                        sections: order.map { group in
+                            Dropdown.Section(title: group, options: (groups[group] ?? []).map { .init(title: $0.name, value: $0.id) })
+                        })
             .fixedSize()
-        }
-        .accessibilityLabel("Voice")
     }
 
     private var systemGroups: [(name: String, voices: [AVSpeechSynthesisVoice])] {
@@ -357,6 +399,7 @@ private struct EngineRow: View {
     let select: () -> Void
     let download: (String) -> Void
     let cancel: (String) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             // Picking the voice is the row's main action; its download control sits to the right,
@@ -365,7 +408,7 @@ private struct EngineRow: View {
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 15))
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(name).font(.system(size: 13, weight: .medium))
                         Text(blurb).font(.system(size: 11.5)).foregroundStyle(.secondary)
@@ -382,7 +425,16 @@ private struct EngineRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(speed).font(.system(size: 11.5)).foregroundStyle(.secondary)
                 downloadControl
+                    .transition(.opacity)
+                    .id(placeKind)
+                    // One height in every state (text, Download, the meter), so the rows match and a
+                    // row doesn't grow when its download starts.
+                    .frame(height: ControlMetrics.smallHeight + 2, alignment: .trailing)
             }
+            .animation(Motion.spring(reduceMotion), value: placeKind)
+            // Its natural width: the select button beside it takes all the spare room, and without
+            // this the column got squeezed until the download meter's text was cut off.
+            .fixedSize()
             .frame(minWidth: 150, alignment: .trailing)
         }
     }
@@ -417,6 +469,19 @@ private struct EngineRow: View {
         }
     }
 
+    /// Which kind of control the row shows, so Download → meter → Downloaded animates as a change
+    /// of control, and the meter's own ticks don't.
+    private var placeKind: String {
+        switch place {
+        case .plain: return "plain"
+        case .download: return "download"
+        case .waiting: return "waiting"
+        case .downloading: return "downloading"
+        case .failed: return "failed"
+        case .downloaded: return "downloaded"
+        }
+    }
+
     @ViewBuilder private var downloadControl: some View {
         switch place {
         case .plain(let text):
@@ -444,25 +509,24 @@ private struct EngineRow: View {
             }
         case .downloading(let status):
             HStack(spacing: 8) {
-                VStack(alignment: .trailing, spacing: 3) {
-                    if let fraction = status.fraction {
-                        ProgressView(value: fraction).frame(width: 110)
-                    } else {
-                        ProgressView().progressViewStyle(.linear).frame(width: 110)
+                // The percent under the bar's left end, the amount under its right end. The amount
+                // keeps one width (DownloadAmount), so neither it nor the bar moves as it counts up.
+                VStack(spacing: 3) {
+                    Meter(fraction: status.fraction)
+                    HStack(spacing: 6) {
+                        if let percent = status.percent { Text(percent) }
+                        Spacer(minLength: 0)
+                        Text(status.amount)
                     }
-                    Text(status.fraction.map { "\(Int($0 * 100))% \u{00B7} \(status.amount)" } ?? status.amount)
-                        .font(.system(size: 10.5).monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    .font(.system(size: 10.5).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 }
-                Button {
+                // "99%" and "3.08 of 3.08 GB" come to 110 pt at this size.
+                .frame(width: 120)
+                IconPlate("xmark", help: "Cancel the download and delete what it fetched") {
                     if let id = engine.model?.id { cancel(id) }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .help("Cancel the download and delete what it fetched")
                 .accessibilityLabel("Cancel downloading \(name)")
             }
             .accessibilityElement(children: .contain)

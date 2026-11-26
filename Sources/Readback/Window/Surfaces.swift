@@ -3,6 +3,17 @@ import SwiftUI
 
 /// One radius ladder for the whole window, so curves nest: anything inside a card uses the
 /// card's radius minus the padding between them, and every corner is continuous.
+/// One spacing scale for every page: section gaps, card gaps and card padding come from here,
+/// so pages keep the same rhythm. (Owner asked for better spacing, 2026-11-25.)
+enum Spacing {
+    static let xs: CGFloat = 4
+    static let s: CGFloat = 8
+    static let m: CGFloat = 12
+    static let l: CGFloat = 16
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
+}
+
 enum Radius {
     /// Page cards: the stats, replies, notices, settings groups.
     static let card: CGFloat = 16
@@ -18,34 +29,48 @@ enum Radius {
     static let iconTile: CGFloat = 6
 }
 
-/// The window's colours, after superwhisper: an opaque window, a sidebar a step lighter than
-/// the page, and cards a step lighter than what they sit on. No translucency, no glass: the
-/// owner found the see-through window too busy (2026-11-24).
+/// The window's colours: a translucent window with the desktop blurred behind it, the sidebar
+/// the more see-through pane and a touch darker, the page mostly solid, and cards a step lighter
+/// than what they sit on. The owner chose this (mockup A) on 2026-11-25, reversing the opaque
+/// window of 2026-11-24. The tints are tuned so secondary text holds 4.5:1 over a white or a
+/// black desktop.
 enum WindowColors {
+    /// Laid over the blurred desktop (`GlassBackground`).
+    static let sidebarTint = Color(nsColor: dynamic(light: 0xE4E4E7, dark: 0x101114, alpha: 0.66))
+    static let pageTint = Color(nsColor: dynamic(light: 0xF4F4F5, dark: 0x202126, alpha: 0.84))
     static let page = Color(nsColor: dynamic(light: 0xF4F4F5, dark: 0x1D1E22))
     static let sidebar = Color(nsColor: dynamic(light: 0xEAEAEC, dark: 0x2A2C31))
-    static let card = Color(nsColor: dynamic(light: 0xFFFFFF, dark: 0x28292E))
-    static let cardHover = Color(nsColor: dynamic(light: 0xFAFAFB, dark: 0x2F3036))
-    /// A card that's playing or chosen: the accent, lightly.
-    static let cardActive = Color(nsColor: dynamic(light: 0xE9F0FE, dark: 0x27324A))
+    /// Cards, hovers and highlights are a light overlay rather than a solid colour, so on the
+    /// glass they stay a step above whatever shows through (a solid dark card read as a hole).
+    static let card = overlay(light: (1, 0.72), dark: (1, 0.06))
+    static let cardHover = overlay(light: (1, 0.9), dark: (1, 0.09))
+    /// A card that's playing or chosen: a neutral tint a step above a resting card (no accent:
+    /// the owner's black-and-white look, 2026-11-25; my call to keep it a tint, not a solid plate).
+    static let cardActive = overlay(light: (0, 0.07), dark: (1, 0.12))
     /// Sidebar cards and the highlight sit on the sidebar, so they're a step lighter than it.
-    static let sidebarCard = Color(nsColor: dynamic(light: 0xF7F7F8, dark: 0x34363C))
-    static let rowHighlight = Color(nsColor: dynamic(light: 0xDCDCE0, dark: 0x393B42))
-    static let rowSelected = Color(nsColor: dynamic(light: 0xD4D5DA, dark: 0x41434B))
+    static let sidebarCard = overlay(light: (1, 0.55), dark: (1, 0.06))
+    static let rowHighlight = overlay(light: (0, 0.05), dark: (1, 0.07))
+    static let rowSelected = overlay(light: (0, 0.08), dark: (1, 0.11))
     /// A hairline that separates rows inside a card.
-    static let hairline = Color(nsColor: dynamic(light: 0xE4E4E7, dark: 0x33343A))
+    static let hairline = overlay(light: (0, 0.07), dark: (1, 0.07))
 
-    static let pageNS = dynamic(light: 0xF4F4F5, dark: 0x1D1E22)
+    /// White (1) or black (0) at an opacity, per appearance.
+    private static func overlay(light: (white: CGFloat, alpha: CGFloat), dark: (white: CGFloat, alpha: CGFloat)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let pick = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return NSColor(white: pick.white, alpha: pick.alpha)
+        })
+    }
 
-    private static func dynamic(light: UInt32, dark: UInt32) -> NSColor {
+    private static func dynamic(light: UInt32, dark: UInt32, alpha: CGFloat = 1) -> NSColor {
         NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? rgb(dark) : rgb(light)
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? rgb(dark, alpha) : rgb(light, alpha)
         }
     }
 
-    private static func rgb(_ hex: UInt32) -> NSColor {
+    private static func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {
         NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
     }
 }
 
@@ -80,9 +105,9 @@ enum SurfaceBase { case page, sidebar }
 struct CardFormStyle: FormStyle {
     func makeBody(configuration: Configuration) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: Spacing.xl) {
                 ForEach(sections: configuration.content) { section in
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: Spacing.s) {
                         if !section.header.isEmpty {
                             section.header
                                 .font(.system(size: 13, weight: .semibold))
@@ -93,12 +118,14 @@ struct CardFormStyle: FormStyle {
                         VStack(spacing: 0) {
                             ForEach(Array(section.content.enumerated()), id: \.element.id) { index, row in
                                 if index > 0 {
-                                    WindowColors.hairline.frame(height: 1).padding(.leading, 14)
+                                    WindowColors.hairline.frame(height: 1).padding(.leading, Spacing.l)
                                 }
                                 row
-                                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
+                                    // Tall enough for a full-size control, so a row with a switch and a row with
+                                    // a dropdown are the same height.
+                                    .frame(maxWidth: .infinity, minHeight: ControlMetrics.height, alignment: .leading)
+                                    .padding(.horizontal, Spacing.l)
+                                    .padding(.vertical, 10)   // 34 + 10 + 10: 54 pt rows
                             }
                         }
                         .surface()
@@ -108,7 +135,9 @@ struct CardFormStyle: FormStyle {
                     }
                 }
             }
-            .padding(PageMetrics.inset)
+            .padding(.horizontal, PageMetrics.inset)
+            .padding(.top, Spacing.s)
+            .padding(.bottom, PageMetrics.inset)
             .toggleStyle(SpreadSwitchStyle())
             .labeledContentStyle(SpreadLabeledContentStyle())
         }
@@ -122,11 +151,13 @@ struct SpreadSwitchStyle: ToggleStyle {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) { configuration.label }
             Spacer(minLength: 8)
-            Toggle("", isOn: configuration.$isOn)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .controlSize(.small)
+            ReadbackSwitch(isOn: configuration.$isOn)
         }
+        // One element for VoiceOver: the row's words, read as a switch with its state.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? "on" : "off")
+        .accessibilityAction { configuration.isOn.toggle() }
     }
 }
 

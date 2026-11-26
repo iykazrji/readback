@@ -81,6 +81,19 @@ final class ControlRequestTests: XCTestCase {
 }
 
 final class CommandAnswerTests: XCTestCase {
+    /// Claude Code's commands are /readback:speak and /readback:read (owner, 2026-11-25); Codex's
+    /// stay as Codex sends them.
+    func testAnswersNameEachToolsOwnCommands() {
+        XCTAssertEqual(CommandAnswer.speak(asked: nil, isOn: false, everyReply: false, tool: .claude),
+                       "Read-aloud is off in this session. /readback:speak on or /readback:speak off changes it, /readback:read reads the last reply.")
+        XCTAssertTrue(CommandAnswer.speak(asked: nil, isOn: true, everyReply: true, tool: .claude).hasSuffix("/readback:read reads the last reply."))
+        XCTAssertEqual(CommandAnswer.speak(asked: nil, isOn: false, everyReply: false, tool: .codex),
+                       "Read-aloud is off in this chat. /speak on or /speak off changes it, /read reads the last reply.")
+        XCTAssertEqual(Tool.claude.speakCommand, "/readback:speak")
+        XCTAssertEqual(Tool.claude.readCommand, "/readback:read")
+        XCTAssertEqual(Tool.codex.speakCommand, "/speak")
+    }
+
     func testEachToolHearsItsOwnWordForAConversation() {
         XCTAssertEqual(CommandAnswer.speak(asked: true, isOn: true, everyReply: false, tool: .claude), "Read-aloud is on for this session.")
         XCTAssertEqual(CommandAnswer.speak(asked: false, isOn: false, everyReply: false, tool: .codex), "Read-aloud is off for this chat.")

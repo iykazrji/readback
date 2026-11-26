@@ -5,25 +5,36 @@
 #   Contents/MacOS/Readback                 the menu bar app
 #   Contents/Helpers/readback               the CLI the coding tools' hooks run
 #   Contents/Helpers/uv                     installs the on-device voice engine
-#   Contents/Resources/ClaudeCodePlugin     the Claude Code mod (/speak, /read, the Stop band)
+#   Contents/Resources/ClaudeCodePlugin     the Claude Code mod (/readback:speak, /readback:read, the Stop band)
 #   Contents/Resources/CodexPluginAssets    the Codex plugin's artwork
 #   Contents/Resources/AppIcon.icns, MenuBarIcon(@2x).png, ThirdPartyNotices.txt
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-0.4.0}"
+VERSION="${VERSION:-0.5.0}"
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 
 UV="${UV:-$(command -v uv || true)}"
 [ -x "$UV" ] || { echo "uv not found: install it or set UV=/path/to/uv" >&2; exit 1; }
 
-swift build -c release --product Readback
-swift build -c release --product readback-cli
+# Universal: Apple silicon and Intel. Intel Macs get the macOS voices; the on-device engine needs
+# Apple silicon (Runtime reports "unsupported" there), so uv, which only installs that engine, stays
+# as it comes. Chosen by the owner on 2026-11-26, after the 0.5 review found the docs promising an
+# Intel fallback that the arm64-only 0.4 zip couldn't give.
+ARCHS=(--arch arm64 --arch x86_64)
+swift build -c release "${ARCHS[@]}" --product Readback
+swift build -c release "${ARCHS[@]}" --product readback-cli
+BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)"
 
 APP=build/Readback.app
 rm -rf "$APP" build/Readback.zip
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
-cp .build/release/Readback "$APP/Contents/MacOS/Readback"
-cp .build/release/readback-cli "$APP/Contents/Helpers/readback"
+cp "$BIN/Readback" "$APP/Contents/MacOS/Readback"
+cp "$BIN/readback-cli" "$APP/Contents/Helpers/readback"
+for binary in "$APP/Contents/MacOS/Readback" "$APP/Contents/Helpers/readback"; do
+  for arch in arm64 x86_64; do
+    lipo "$binary" -verify_arch "$arch" || { echo "$binary has no $arch slice" >&2; exit 1; }
+  done
+done
 cp "$UV" "$APP/Contents/Helpers/uv"
 cp Resources/ThirdPartyNotices.txt "$APP/Contents/Resources/"
 
@@ -64,6 +75,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAudioCaptureUsageDescription</key><string>Readback turns other apps' sound down while it reads a reply aloud, if you switch that on in Reading. The sound only passes through: nothing is recorded or kept.</string>
   <key>NSHumanReadableCopyright</key><string>Readback. Voices run on your Mac.</string>
 </dict>
 </plist>

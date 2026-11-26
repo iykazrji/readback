@@ -183,7 +183,7 @@ actor VoiceServer {
         self.downloads = downloads
     }
 
-    var isInstalled: Bool { FileManager.default.isExecutableFile(atPath: paths.voiceServer.path) }
+    var isInstalled: Bool { paths.engineIsInstalled }
 
     /// The last model change asked for. An actor gives way at every await, so without this a
     /// launch warm-up, a sample and Download now could interleave: two downloads sharing one

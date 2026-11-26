@@ -235,6 +235,20 @@ public struct IntegrationFiles {
         return found
     }
 
+    /// Launch: brings the copied mod up to this version of the app. The copy is shared by every
+    /// Claude Code login connected to Readback, a CLAUDE_CONFIG_DIR one included, and the app
+    /// only sees ~/.claude, so a copy that's there is refreshed whatever ~/.claude says (deep
+    /// review 2026-11-26, P2-2). With no copy, one is put back only when ~/.claude lists it.
+    public func refreshPlugin() throws {
+        if !FileManager.default.fileExists(atPath: paths.claudePlugin.path) {
+            switch try? status(.claude) {
+            case .connected?, .incomplete?: break
+            default: return
+            }
+        }
+        try copyPlugin()
+    }
+
     /// Copies the mod out of the app, only when the app's copy differs: every open Claude Code
     /// session reloads the mod (and says so) whenever its files change.
     public func copyPlugin() throws {

@@ -42,7 +42,8 @@ struct PlayerView: View {
     var body: some View {
         VStack(spacing: 0) {
             if replies.showingList {
-                ReplyList(replies: replies, playingID: reader.isActive ? reader.replyID : nil, onPlay: onPlay)
+                ReplyList(replies: replies, playingID: reader.isActive ? reader.replyID : nil,
+                          moving: reader.phase == .playing, onPlay: onPlay)
                     .padding(.horizontal, 6)
                     .padding(.top, 6)
                 Rectangle().fill(Theme.border).frame(height: 1).padding(.horizontal, 12).padding(.top, 4)
@@ -74,6 +75,7 @@ struct PlayerView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
         .onHover(perform: onHover)
         .environment(\.colorScheme, .dark)
+        .tint(.primary)   // no accent anywhere (owner's black-and-white look, 2026-11-25)
     }
 
     @ViewBuilder private var nowPlaying: some View {
@@ -91,13 +93,20 @@ struct PlayerView: View {
                     HStack(spacing: 10) {
                         DotProgress(progress: download.fraction ?? 0, pulsing: download.fraction == nil)
                             .frame(height: 3)
-                        Text("Downloading the voice \u{00B7} \(download.amount)")
-                            .font(.system(size: 11, weight: .medium).monospacedDigit())
-                            .foregroundStyle(Theme.textDim)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .accessibilityLabel("Downloading the voice")
-                            .accessibilityValue(download.amount)
+                        // Two pieces, not "… · amount": the amount keeps one width by padding its
+                        // left end (DownloadAmount), which would show as a wide gap after a "·".
+                        // One width means the bar beside it never shrinks or grows as it counts.
+                        HStack(spacing: 8) {
+                            Text("Downloading the voice")
+                            Text(download.amount)
+                        }
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(Theme.textDim)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Downloading the voice")
+                        .accessibilityValue(download.amount)
                         CancelDownloadButton { onCancelDownload(download.model) }
                     }
                     .frame(height: 16)
@@ -423,10 +432,8 @@ private struct ListToggle: View {
             replies.showingList.toggle()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "waveform")
-                    .font(.system(size: 12, weight: .semibold))
+                Waveform(playing: reader.phase == .playing, height: 12)
                     .foregroundStyle(Theme.label)
-                    .symbolEffect(.variableColor.iterative, isActive: reader.phase == .playing)
                     .frame(width: 18)
                 // "Codex · readback" when it fits; just the project when it doesn't, which tells
                 // two agents apart better than "Codex · rea…" does.
@@ -483,6 +490,8 @@ private struct ListToggle: View {
 struct ReplyList: View {
     @ObservedObject var replies: Replies
     let playingID: UUID?
+    /// Whether the playing reply is being read right now, rather than paused.
+    var moving = true
     let onPlay: (Reply) -> Void
 
     var body: some View {
@@ -497,7 +506,7 @@ struct ReplyList: View {
                         .padding(12)
                 }
                 ForEach(recent) { reply in
-                    ReplyRow(reply: reply, isPlaying: reply.id == playingID) { onPlay(reply) }
+                    ReplyRow(reply: reply, isPlaying: reply.id == playingID, moving: moving) { onPlay(reply) }
                 }
             }
         }
@@ -508,6 +517,7 @@ struct ReplyList: View {
 private struct ReplyRow: View {
     let reply: Reply
     let isPlaying: Bool
+    var moving = true
     let action: () -> Void
     @State private var hovering = false
 
@@ -551,19 +561,11 @@ private struct ReplyRow: View {
 
     /// "just now", "12 min", then the time today, then the day: steadier to scan than
     /// "2 sec. ago", which is stale the moment the list opens.
-    static func when(_ date: Date, now: Date = Date()) -> String {
-        let seconds = now.timeIntervalSince(date)
-        if seconds < 60 { return "just now" }
-        if seconds < 3600 { return "\(Int(seconds / 60)) min" }
-        if Calendar.current.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
-        if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
-        return date.formatted(.dateTime.day().month(.abbreviated))
-    }
+    static func when(_ date: Date, now: Date = Date()) -> String { ShortTime.when(date, now: now) }
 
     @ViewBuilder private var mark: some View {
         if isPlaying {
-            Image(systemName: "waveform")
-                .font(.system(size: 10, weight: .bold))
+            Waveform(playing: moving, height: 10)
                 .foregroundStyle(Theme.textActive)
         } else if reply.state == .waiting {
             Circle().fill(Theme.dotFilled).frame(width: 6, height: 6)

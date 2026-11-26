@@ -9,95 +9,66 @@ struct HomePage: View {
     @ObservedObject var reader: Reader
     @ObservedObject var replies: Replies
     @ObservedObject var connections: Connections
+    @ObservedObject var prefs: Preferences
+    @ObservedObject var runtime: Runtime
     let seeAll: () -> Void
+    let openSession: (SessionSummary) -> Void
     let openConnections: () -> Void
+    let openVoices: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Home, top to bottom: what's reading now and what's next, the read-every-reply switches,
+    /// recent sessions, and setup at a glance. One column (owner's pick), one 24 pt gap between
+    /// sections, laid out as the home-plates mockup the owner signed off on 2026-11-25.
     var body: some View {
         ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    stats
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Recent replies").font(.system(size: 15, weight: .semibold))
-                            .accessibilityAddTraits(.isHeader)
-                        Spacer()
-                        Button("See all", action: seeAll)
-                            .buttonStyle(.borderless)
-                            .disabled(replies.all.isEmpty)
+            VStack(alignment: .leading, spacing: Spacing.xl) {
+                NowCard(app: app, reader: reader, replies: replies)
+                EveryReplyRow(prefs: prefs)
+                VStack(alignment: .leading, spacing: Spacing.s) {
+                    sectionHeader("Sessions") {
+                        Button(action: seeAll) {
+                            HStack(spacing: 6) {
+                                Text("See all")
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.readback(.quiet))
+                        .controlSize(.small)
+                        .padding(.trailing, -ControlMetrics.smallQuietPadding)
+                        .accessibilityLabel("See all")
+                        .disabled(replies.all.isEmpty)
                     }
                     if replies.all.isEmpty {
                         EmptyReplies(openConnections: openConnections)
                     } else {
-                        VStack(spacing: 10) {
-                            ForEach(replies.all.prefix(5)) { reply in
-                                ReplyCard(app: app, reply: reply, isPlaying: reader.isSpeaking && reader.replyID == reply.id)
-                            }
-                        }
-                        .padding(.top, -12)   // the cards belong to the heading above them
+                        SessionsList(app: app, sessions: SessionSummary.sessions(from: replies.all), reader: reader,
+                                     openSession: openSession)
                     }
                 }
-                .padding(.horizontal, PageMetrics.inset)
-                .padding(.top, 8)
-                .padding(.bottom, PageMetrics.inset)
+                VStack(alignment: .leading, spacing: Spacing.s) {
+                    sectionHeader("Setup") { EmptyView() }
+                    SetupChips(prefs: prefs, runtime: runtime, connections: connections,
+                               openConnections: openConnections, openVoices: openVoices)
+                }
+            }
+            .padding(.horizontal, PageMetrics.inset)
+            .padding(.top, 8)
+            .padding(.bottom, PageMetrics.inset)
         }
         .pageHeader(PageTitle("Home"))
     }
 
-    private var stats: some View {
-        HStack(spacing: 0) {
-            Stat(symbol: "text.bubble", value: replies.repliesRead.formatted(), label: "Replies read",
-                 help: "Replies Readback has read to you, all time")
-            Stat(symbol: "clock", value: listening, label: "Listening time",
-                 help: "An estimate: the words read, at about 165 words a minute")
-            Stat(symbol: "text.word.spacing", value: replies.wordsHeard.formatted(), label: "Words heard",
-                 help: "Words Readback has read to you, all time")
-            Stat(symbol: "terminal", value: "\(connectedCount) of \(Tool.allCases.count)", label: "Tools connected",
-                 help: "Claude Code, Codex and OpenCode, in Connections")
+    /// A section title, 20 pt tall whatever sits beside it, so every section starts the same way.
+    private func sectionHeader<Trailing: View>(_ title: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+            Spacer()
+            trailing()
         }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 6)
-        .surface()
-    }
-
-    /// Tools, not homes: Codex and Codex in Orca are one tool.
-    private var connectedCount: Int {
-        Set(connections.rows.filter { ConnectionText.isWorking($0.value) }.map(\.key.tool)).count
-    }
-
-    /// An estimate from the words read at about 165 a minute, so it says "~".
-    private var listening: String {
-        let minutes = Double(replies.wordsHeard) / 165
-        if replies.wordsHeard == 0 { return "0 min" }
-        if minutes < 1 { return "< 1 min" }
-        if minutes < 60 { return "~\(Int(minutes.rounded())) min" }
-        return "~\((minutes / 60).formatted(.number.precision(.fractionLength(0...1)))) h"
-    }
-}
-
-private struct Stat: View {
-    let symbol: String
-    let value: String
-    let label: String
-    let help: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(height: 16)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value).font(.system(size: 22, weight: .semibold).monospacedDigit())
-                Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .help(help)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-        .accessibilityValue(value.replacingOccurrences(of: "~", with: "about "))
-        .accessibilityHint(help)
+        .frame(height: 20)
     }
 }
 
@@ -107,7 +78,7 @@ private struct EmptyReplies: View {
 
     var body: some View {
         EmptyCard(title: "No replies yet",
-                  message: "Connect your coding tools, then type /speak on in a Claude Code session or turn on \u{201C}Read every reply\u{201D} in Reading. Replies show up here as they come in.") {
+                  message: "Connect your coding tools, then type /readback:speak on in a Claude Code session or turn on \u{201C}Read every reply\u{201D} in Reading. Replies show up here as they come in.") {
             Button("Open Connections", action: openConnections)
         }
     }
@@ -141,12 +112,15 @@ struct HistoryPage: View {
     let app: AppDelegate
     @ObservedObject var reader: Reader
     @ObservedObject var replies: Replies
+    /// The one session to show, from Home's "See all N replies"; nil shows every session.
+    @Binding var session: SessionSummary?
     let openConnections: () -> Void
     @State private var search = ""
     @State private var tool: Tool?
     /// What the last Clear removed, while it can still be undone.
     @State private var cleared: [Reply] = []
     @State private var undoExpiry: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -156,10 +130,12 @@ struct HistoryPage: View {
                 if replies.all.isEmpty {
                     EmptyReplies(openConnections: openConnections)
                 } else if filtered.isEmpty {
-                    EmptyCard(title: noMatchTitle, message: "Try other words, or look through every tool.") {
+                    EmptyCard(title: noMatchTitle,
+                              message: session == nil ? "Try other words, or look through every tool." : "Try other words, or show replies from every session.") {
                         Button("Show all replies") {
                             search = ""
                             tool = nil
+                            session = nil
                         }
                     }
                 }
@@ -172,27 +148,35 @@ struct HistoryPage: View {
                         .accessibilityAddTraits(.isHeader)
                     ForEach(group.replies) { reply in
                         ReplyCard(app: app, reply: reply, isPlaying: reader.isSpeaking && reader.replyID == reply.id)
+                            .transition(ReplyCard.arrives(reduceMotion))
                     }
                 }
             }
+            .animation(Motion.spring(reduceMotion), value: filtered.map(\.id))
             .padding(.horizontal, PageMetrics.inset)
             .padding(.bottom, PageMetrics.inset)
         }
         .pageHeader(PageTitle("History") {
-                Picker("Tool", selection: $tool) {
-                    Text("All tools").tag(Tool?.none)
-                    ForEach(Tool.allCases) { Text($0.name).tag(Tool?.some($0)) }
+                // One session shows as a chip in the tool menu's place: the session already says
+                // which tool. Its ✕ goes back to every session.
+                if let session {
+                    SessionChip(session: session) { self.session = nil }
+                } else {
+                    Dropdown("Show replies from", selection: $tool,
+                             options: [("All tools", Tool?.none)] + Tool.allCases.map { ($0.name, Tool?.some($0)) })
+                    .fixedSize()
                 }
-                .labelsHidden()
-                .fixedSize()
-                .accessibilityLabel("Show replies from")
-                SearchField(text: $search, prompt: "Search replies")
-                    .frame(width: 190)
+                SearchField("Search replies", text: $search)
                 // Straight away, with an undo, rather than a confirmation sheet: the sheet was slow
                 // to appear (0.6-1.3 s) and stood between you and something you can take back.
-                Button("Clear", action: clear)
-                    .disabled(replies.all.isEmpty)
-                    .help("Remove every saved reply. You can undo it for a few seconds.")
+                // Hidden while one session shows, where it would read as "clear this session"
+                // (owner approved, 2026-11-26).
+                if session == nil {
+                    Button("Clear", action: clear)
+                        .buttonStyle(.readback(.destructive))
+                        .disabled(replies.all.isEmpty)
+                        .help("Remove every saved reply. You can undo it for a few seconds.")
+                }
         })
         // One scroll view for every state, so the page keeps its shape with replies, none, or
         // none that match.
@@ -250,21 +234,16 @@ struct HistoryPage: View {
         cleared = []
     }
 
-    private var query: String { search.trimmingCharacters(in: .whitespaces) }
+    private var filter: ReplyFilter { ReplyFilter(session: session?.id, tool: tool, query: search) }
 
     private var noMatchTitle: String {
-        if !query.isEmpty { return "No replies match \u{201C}\(query)\u{201D}" }
+        if !filter.words.isEmpty { return "No replies match \u{201C}\(filter.words)\u{201D}" }
+        if let session { return "No replies from \(session.project)" }
         if let tool { return "No replies from \(tool.name)" }
         return "Nothing here"
     }
 
-    private var filtered: [Reply] {
-        let query = query.lowercased()
-        return replies.all.filter { reply in
-            (tool == nil || reply.request.tool == tool)
-                && (query.isEmpty || reply.text.lowercased().contains(query) || reply.title.lowercased().contains(query))
-        }
-    }
+    private var filtered: [Reply] { replies.all.filter(filter.matches) }
 
     private var days: [(day: Date, title: String, replies: [Reply])] {
         let calendar = Calendar.current
@@ -279,35 +258,56 @@ struct HistoryPage: View {
     }
 }
 
-/// The Mac's own search field: a magnifier, a clear button, and Esc to empty it.
-private struct SearchField: NSViewRepresentable {
-    @Binding var text: String
-    let prompt: String
+/// The session History is showing: its tool mark, project and tool, and an ✕ back to every
+/// session. A 34 pt plate like Home's setup chips (7 pt before the 20 pt mark), its edge a step
+/// stronger because it's a choice that's in force. As the mockup the owner approved, 2026-11-26.
+private struct SessionChip: View {
+    let session: SessionSummary
+    let showEverySession: () -> Void
+    @State private var hovering = false
+    @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var scheme
 
-    func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField()
-        field.placeholderString = prompt
-        field.sendsSearchStringImmediately = true
-        field.target = context.coordinator
-        field.action = #selector(Coordinator.changed(_:))
-        field.setAccessibilityLabel(prompt)
-        return field
-    }
-
-    func updateNSView(_ field: NSSearchField, context: Context) {
-        context.coordinator.text = $text
-        if field.stringValue != text { field.stringValue = text }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
-
-    final class Coordinator: NSObject {
-        var text: Binding<String>
-        init(text: Binding<String>) { self.text = text }
-
-        @MainActor @objc func changed(_ sender: NSSearchField) {
-            text.wrappedValue = sender.stringValue
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: ControlMetrics.radius, style: .continuous)
+        let close = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        HStack(spacing: 8) {
+            ToolMark(tool: session.tool, size: 20)
+            // In a narrow window the tool's name goes first, then the project name shortens.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Text(session.project)
+                    Text(session.tool?.name ?? "Agent").foregroundStyle(.secondary)
+                }
+                .fixedSize()
+                Text(session.project).truncationMode(.tail)
+            }
+            Button(action: showEverySession) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(hovering ? .primary : .secondary)
+                    .frame(width: 24, height: 24)
+                    .background(hovering ? ControlMetrics.hoverFill(scheme) : .clear, in: close)
+                    .contentShape(close)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .focused($focused)
+            .keyboardFocusRing(focused, close)
+            .onHover { hovering = $0 }
+            .help("Show every session")
+            .accessibilityLabel("Show every session")
         }
+        .font(.system(size: 13))
+        .lineLimit(1)
+        // The ✕'s 24 pt square sits 5 pt from the edge, the same as above and below it.
+        .padding(.leading, 7)
+        .padding(.trailing, (ControlMetrics.height - 24) / 2)
+        .frame(height: ControlMetrics.height)
+        .background(ControlMetrics.fill(scheme), in: shape)
+        .overlay { Hairline(shape, ControlMetrics.hoverEdge(scheme)) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Showing \(session.project), \(session.tool?.name ?? "Agent")")
     }
 }
 
@@ -316,6 +316,11 @@ private struct SearchField: NSViewRepresentable {
 /// One reply as a card: where it came from, when, and its first lines. Click to hear it; the
 /// chevron opens the whole reply, selectable, in place.
 struct ReplyCard: View {
+    /// A card coming or going: it grows in from a little smaller and fades.
+    static func arrives(_ reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .scale(scale: 0.97).combined(with: .opacity)
+    }
+
     let app: AppDelegate
     let reply: Reply
     let isPlaying: Bool
@@ -366,6 +371,7 @@ struct ReplyCard: View {
         }
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(Motion.spring(reduceMotion), value: isPlaying)
         .contextMenu {
             Button("Play") { app.play(reply) }
             if canExpand {
