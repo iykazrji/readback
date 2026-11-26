@@ -64,18 +64,22 @@ final class Runtime: ObservableObject {
             voice = .pending
         } else if let download {
             voice = .downloading(received: download.received)
-        } else if let bytes = downloads.finished(model) {
-            voice = .fetched(bytes)
+        } else if let done = downloads.finished(model, since: voiceStepBegan) {
+            voice = .fetched(done.bytes)
         } else {
             voice = voiceWasOnDisk ? .onDisk : .pending
         }
-        // The download's total is already the larger of the catalog's and what it reported.
+        // A download's total is already the larger of the catalog's and what it reported, and a
+        // finished one keeps it through warm-up (a custom model has no catalog size).
+        let done = step == .voice ? downloads.finished(model, since: voiceStepBegan) : nil
         return EngineInstall.progress(step: step, engineFetched: fetchedBytes, engineTotal: Self.expectedFetchBytes,
-                                      voice: voice, voiceTotal: download?.total ?? VoiceCatalog.downloadBytes(for: model))
+                                      voice: voice, voiceTotal: download?.total ?? done?.total ?? VoiceCatalog.downloadBytes(for: model))
     }
 
     /// The install's voice was in the cache when the voice step began (a reinstall).
     private var voiceWasOnDisk = false
+    /// When the voice step began: only a download finished since then is this install's.
+    private var voiceStepBegan = Date.distantFuture
 
     /// The engine kind whose model the running install loads, for "Kokoro · downloading".
     var installingEngine: EngineKind? {
@@ -198,6 +202,9 @@ final class Runtime: ObservableObject {
         fetchedBytes = 0
         installTarget = model
         voiceWasOnDisk = false
+        voiceStepBegan = .distantFuture
+        // This attempt is an install: a failure now is the install's, not an earlier update's.
+        updateFailed = false
         state = .installing("Starting…")   // so anyone asking right away sees it's under way
         task = Task {
             defer {
@@ -235,6 +242,7 @@ final class Runtime: ObservableObject {
                 fetchedBytes = max(fetchedBytes, Self.expectedFetchBytes)
                 // Asked before the step shows, so the meter never counts a model that isn't there.
                 voiceWasOnDisk = ModelCache().isDownloaded(model, expectedBytes: VoiceCatalog.downloadBytes(for: model))
+                voiceStepBegan = Date()
                 step = .voice
                 state = .installing("Downloading the voice (\(modelSize))…")
                 installingModel = model

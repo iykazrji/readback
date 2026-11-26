@@ -26,6 +26,7 @@ struct EveryReplyRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .surface()
+        .keepsReadingSwitchesFresh(prefs)
     }
 
     private var title: some View {

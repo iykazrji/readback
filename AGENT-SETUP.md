@@ -56,9 +56,9 @@ See which tools are on this Mac:
 
 Each line says `not installed`, `not connected`, `partly connected` or `connected`. Connect the tools that are installed and not `connected` (connecting a `partly connected` one puts back what's missing).
 
-**Ask first:** "I'll connect Readback to <the tools>. That adds Readback's hooks to their settings (it keeps a backup of each file it changes, and Disconnect in Readback undoes it), and Readback will read every reply from them out loud until you switch that off. OK?"
+**Ask first:** "I'll connect Readback to <the tools>. That adds Readback's hooks to their settings (it keeps a backup of each file it changes, and Disconnect in Readback undoes it), and a tool connected for the first time has every reply read out loud until you switch that off. OK?"
 
-A new connection switches on reading every reply for that tool and prints a line saying so (`Readback reads every <tool> reply out loud. ...`). A tool the person had switched off before stays off. If they'd rather not hear every reply, run `"$R" auto <claude|codex|opencode> off` after connecting.
+When `connect` switches on reading every reply, it prints a line saying so (`Readback reads every <tool> reply out loud. ...`). It does that only for a new connection of a tool whose switch was never set: reconnecting or repairing a tool, or one the person switched off before, leaves the switch as it was and prints nothing about it. If they'd rather not hear every reply, run `"$R" auto <claude|codex|opencode> off` after connecting.
 
 ```sh
 "$R" connect claude     # Claude Code

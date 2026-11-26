@@ -458,6 +458,7 @@ actor VoiceServer {
             throw SpeechError.downloadFailed(reason)
         }
         Log.info("downloaded \(model)")
+        await downloads.succeeded(model)
     }
 
     /// nltk downloads into NLTK_DATA only when that folder already exists; otherwise it makes

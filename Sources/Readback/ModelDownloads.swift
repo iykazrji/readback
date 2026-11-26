@@ -30,6 +30,7 @@ final class ModelDownloads: ObservableObject {
 
     func started(_ model: String) {
         failure = nil
+        if completed?.model == model { completed = nil }
         active = Status(model: model, received: 0, total: VoiceCatalog.downloadBytes(for: model))
     }
 
@@ -51,14 +52,23 @@ final class ModelDownloads: ObservableObject {
         if active?.model == model { active = nil }
     }
 
-    /// The last download to end, as it stood then. With `failure` it tells a finished download
-    /// apart: the install's meter keeps its bytes while the voice warms up.
+    /// The last download to end, as it stood then; it only counts once `succeeded` says it worked.
     private var lastEnded: Status?
 
-    /// The bytes a download of `model` came to, if its last one finished (didn't fail or stop).
-    func finished(_ model: String) -> Int64? {
-        guard let lastEnded, lastEnded.model == model, failure?.model != model, active?.model != model else { return nil }
-        return max(lastEnded.received, lastEnded.total ?? 0)
+    /// A download that finished and checked out, with when: the install's meter keeps its bytes
+    /// and total while the voice warms up, and only for a download made since its voice step began.
+    @Published private(set) var completed: (model: String, bytes: Int64, total: Int64?, at: Date)?
+
+    /// The download of `model` worked (called after its exit and output are checked).
+    func succeeded(_ model: String) {
+        guard let lastEnded, lastEnded.model == model else { return }
+        completed = (model, max(lastEnded.received, lastEnded.total ?? 0), lastEnded.total, Date())
+    }
+
+    /// What a download of `model` that finished at or after `since` came to.
+    func finished(_ model: String, since: Date) -> (bytes: Int64, total: Int64?)? {
+        guard let completed, completed.model == model, completed.at >= since, active?.model != model else { return nil }
+        return (completed.bytes, completed.total)
     }
 
     /// The person stopped it: not a failure, so nothing red is left behind.

@@ -266,9 +266,11 @@ struct SetupSheet: View {
         // that off before, so each line says what this tool will actually do.
         // While a connect runs, say what it will do; once it's done (or failed), the saved switch is
         // the answer, so a failed or not-new connect never promises reading (review 2026-11-26).
+        // And a tool whose connect failed promises nothing, whatever its switch says.
         let connecting = { (tool: Tool) in picked.contains { $0.tool == tool && row($0)?.busy != nil } }
+        let failed = { (tool: Tool) in picked.contains { $0.tool == tool && row($0)?.busy == nil && row($0)?.error != nil } }
         let readsEvery = { (tool: Tool) in
-            prefs.readsEveryReply(tool) || (turningOn.contains(tool) && connecting(tool))
+            !failed(tool) && (prefs.readsEveryReply(tool) || (turningOn.contains(tool) && connecting(tool)))
         }
         if picked.contains(where: { $0.tool == .claude }) {
             lines.append(readsEvery(.claude)
