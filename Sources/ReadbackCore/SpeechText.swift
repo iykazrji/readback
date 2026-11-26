@@ -6,7 +6,14 @@ import NaturalLanguage
 public enum SpeechText {
     /// Whether a reply has anything to read once it's cleaned.
     public static func isSpeakable(_ markdown: String) -> Bool {
-        !chunks(clean(markdown)).isEmpty
+        !voicedChunks(markdown).isEmpty
+    }
+
+    /// The reply's chunks as the player shows them, leaving out any the voice would say nothing
+    /// for (a line of commit hashes, which SpokenText drops): an empty string sent to a voice can
+    /// fail the whole reading (deep review 2026-11-26). The queue and the reader both use this.
+    public static func voicedChunks(_ markdown: String) -> [String] {
+        chunks(clean(markdown)).filter { !SpokenText.rewrite($0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     /// Strips markdown that shouldn't be spoken. Code blocks and tables are replaced

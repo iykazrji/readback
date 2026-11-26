@@ -72,7 +72,7 @@ final class Reader: ObservableObject {
     /// `cueLead` after it. Played then, not when the reply arrives, so it always means "about
     /// to read" even when the voice takes a while to get going (a first download, Qwen3).
     func start(_ request: SpeakRequest, replyID: UUID? = nil, cueSound: String? = nil) {
-        let chunks = SpeechText.chunks(SpeechText.clean(request.text))
+        let chunks = SpeechText.voicedChunks(request.text)
         guard !chunks.isEmpty else {
             Log.info("nothing speakable in a reply from \(request.tool?.name ?? "a reply without a tool")")
             return

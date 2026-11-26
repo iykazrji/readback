@@ -286,6 +286,23 @@ final class DeepReviewSameSecondTests: XCTestCase {
     }
 }
 
+/// P2 plausible (a): a line the voice would say nothing for (only commit hashes, which SpokenText
+/// leaves out) is never sent to the voice, where an engine that rejects empty text would fail the
+/// whole reading; and a reply made only of such lines isn't speakable, so the queue keeps it
+/// rather than "playing" silence. The reader voices `SpokenText.rewrite(chunk)` (Reader.start).
+final class DeepReviewVoicedChunkTests: XCTestCase {
+    func testALineWithNothingToSayIsntVoiced() {
+        let reply = "First part.\n1942cef 8a669b7\nSecond part."
+        XCTAssertTrue(SpeechText.chunks(SpeechText.clean(reply)).contains { SpokenText.rewrite($0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
+                      "the review's case: a chunk that rewrites to nothing")
+        let voiced = SpeechText.voicedChunks(reply)
+        XCTAssertEqual(voiced.count, 2)
+        XCTAssertFalse(voiced.contains { SpokenText.rewrite($0).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        XCTAssertFalse(SpeechText.isSpeakable("1942cef\n`8a669b7`"))
+        XCTAssertTrue(SpeechText.isSpeakable(reply))
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)
