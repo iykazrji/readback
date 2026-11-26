@@ -21,7 +21,7 @@ struct SetupSheet: View {
     @State private var started = false
     /// Tools that Set up's connections switch "read every reply" on for, known at the click so the
     /// next steps say so from the start rather than once each connect lands.
-    @State private var turningOn: Set<Tool> = []
+    @State private var turningOn: Set<ToolHome> = []
 
     private var found: [ToolHome] {
         connections.homes.filter { connections.row($0)?.installed == true }
@@ -270,10 +270,12 @@ struct SetupSheet: View {
         // failing mustn't misreport the other (review 2026-11-26, round 3).
         let failed = { (home: ToolHome) in row(home)?.busy == nil && row(home)?.error != nil }
         let working = picked.filter { !failed($0) }
-        let connecting = { (tool: Tool) in working.contains { $0.tool == tool && row($0)?.busy != nil } }
+        // The prediction is per home: only a home that's still connecting and was itself new counts.
+        let predicted = { (tool: Tool) in
+            working.contains { $0.tool == tool && row($0)?.busy != nil && turningOn.contains($0) }
+        }
         let readsEvery = { (tool: Tool) in
-            working.contains { $0.tool == tool }
-                && (prefs.readsEveryReply(tool) || (turningOn.contains(tool) && connecting(tool)))
+            working.contains { $0.tool == tool } && (prefs.readsEveryReply(tool) || predicted(tool))
         }
         if working.contains(where: { $0.tool == .claude }) {
             lines.append(readsEvery(.claude)
@@ -308,7 +310,7 @@ struct SetupSheet: View {
             // is the same rule from the row, only so the next steps say it from the first frame.
             let looksNew = row(home)?.status == .notConnected && row(home)?.error == nil
             if prefs.switches.switchesOn(forNewConnectionOf: home.tool, isNew: looksNew) {
-                turningOn.insert(home.tool)
+                turningOn.insert(home)
             }
             connections.connect(home)
         }
