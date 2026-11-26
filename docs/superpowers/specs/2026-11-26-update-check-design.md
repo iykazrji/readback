@@ -43,7 +43,7 @@ The version card at the bottom of the sidebar, under the Voice card, shows one o
 8. **Couldn't check:** "Couldn't check for updates", a reason, "Try again" and a quiet "Close" (back to rest). Reasons: no connection ("Readback couldn't reach GitHub. Check your internet connection."), rate-limited (403 or 429: "GitHub is limiting requests right now. Try again in a few minutes."), anything else ("Readback couldn't read GitHub's answer. Try again later.").
 9. **Couldn't install:** "Couldn't install 0.6.0", a reason, a full-width "Try again" and a quiet "Download page" under it. Reasons:
    - the download stopped: "The download didn't finish." and the system's reason
-   - no digest: "Readback couldn't check that the download is genuine."
+   - no digest: "GitHub didn't say what the download should be, so Readback couldn't check it." (Was "…that the download is genuine"; changed 2026-11-26 after the deep review, since the check proves the file matches GitHub's, not who published it.)
    - digest mismatch: "The download didn't match the file on GitHub."
    - no app: "Readback wasn't in the download."
    - another app: "The download had a different app in it."

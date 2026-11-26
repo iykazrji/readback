@@ -193,7 +193,9 @@ public enum InstallFailure: Error, Equatable {
         case .incompatible: reason = "The new version won\u{2019}t run on this Mac."
         case .busy(let wait): reason = "Installing now would cut off something you started. " + wait.message
         case .download(let why): reason = "The download didn\u{2019}t finish. " + sentence(why)
-        case .noDigest: reason = "Readback couldn\u{2019}t check that the download is genuine."
+        // What the check proves is that the zip is the file GitHub lists, not who made it (the
+        // app is ad hoc signed), so it doesn't say "genuine" (deep review 2026-11-26).
+        case .noDigest: reason = "GitHub didn\u{2019}t say what the download should be, so Readback couldn\u{2019}t check it."
         case .digestMismatch: reason = "The download didn\u{2019}t match the file on GitHub."
         case .noApp: reason = "Readback wasn\u{2019}t in the download."
         case .wrongApp: reason = "The download had a different app in it."

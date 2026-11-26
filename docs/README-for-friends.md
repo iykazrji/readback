@@ -61,7 +61,7 @@ There's also a command-line tool at `/Applications/Readback.app/Contents/Helpers
 
 Click **Check for updates** at the bottom of Readback's sidebar, under the version number. Readback never checks on its own.
 
-If there's a newer version, click **Install and relaunch**. Readback downloads it, makes sure it's genuine, swaps it in for your copy and reopens. Your tools stay connected, and Codex won't ask you to approve its hooks again. If you've turned on "Lower other sounds while reading", macOS may ask for that permission again.
+If there's a newer version, click **Install and relaunch**. Readback downloads it, checks it's exactly the file GitHub lists for that release, swaps it in for your copy and reopens. Your tools stay connected, and Codex won't ask you to approve its hooks again. If you've turned on "Lower other sounds while reading", macOS may ask for that permission again.
 
 If Readback can't replace itself, for example because it's in a folder it isn't allowed to change, you'll see **Download page** instead. Download the zip from there and replace the app yourself.
 
