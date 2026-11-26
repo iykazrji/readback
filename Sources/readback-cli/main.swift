@@ -230,7 +230,7 @@ case "stop":
     let stop = StopRequest.fromCLI(stdin: input)
     guard isUp() else { exit(0) }
     guard let stop else {
-        log("stop: the hook named no session, so nothing was stopped")
+        log("stop: nothing stopped (the hook named no session, or the prompt was one of Readback's own commands)")
         exit(0)
     }
     _ = post("stop", stop)

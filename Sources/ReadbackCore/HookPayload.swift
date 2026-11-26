@@ -105,6 +105,10 @@ public struct HookPayload {
     /// the menu, `readback stop` typed in a terminal).
     public var stopRequest: StopRequest? {
         guard let session, !session.isEmpty else { return nil }
+        // Readback's own command (Claude Code's /readback:read and /readback:speak are files, so
+        // its prompt hook may see them) isn't a new turn and stops nothing: /readback:read is
+        // about to read the reply this turn already has.
+        guard PromptCommand(prompt: prompt) == nil else { return nil }
         return StopRequest(session: session, newTurn: true)
     }
 

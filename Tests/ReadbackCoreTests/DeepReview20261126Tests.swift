@@ -73,6 +73,23 @@ final class DeepReviewCompatibilityTests: XCTestCase {
     }
 }
 
+/// Fix review, round 1 (R1-1): in 0.5 Claude Code's commands are files, /readback:read and
+/// /readback:speak. If its UserPromptSubmit hook fires for one, that prompt isn't a new turn, and
+/// it stops nothing: otherwise /readback:read would make the reply it's about to read look like an
+/// earlier turn's (a second History row) or stop the reading it starts. The hook's stdin is
+/// Claude Code's UserPromptSubmit payload: session_id and prompt (HookPayload.stopRequest).
+final class DeepReviewOwnCommandTests: XCTestCase {
+    func testReadbacksOwnCommandIsntANewTurn() {
+        for prompt in ["/readback:read", "/readback:speak on", "/readback:speak"] {
+            XCTAssertNil(HookPayload(json: ["session_id": "s", "prompt": prompt]).stopRequest, prompt)
+        }
+        XCTAssertEqual(HookPayload(json: ["session_id": "s", "prompt": "fix the failing test"]).stopRequest,
+                       StopRequest(session: "s", newTurn: true))
+        XCTAssertEqual(HookPayload(json: ["session_id": "s", "prompt": "/read the docs first"]).stopRequest,
+                       StopRequest(session: "s", newTurn: true), "an ordinary prompt that starts like one")
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)
