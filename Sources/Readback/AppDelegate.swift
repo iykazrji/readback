@@ -62,11 +62,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startControlServer()
         connections.refreshPlugin()
         Log.info("Readback \(Bundle.main.version) started")
+        // The one answer the version card shows and the install acts on, at the click and again
+        // just before the swap.
         updater.waitingOn = { [unowned self] in
             let installing: Bool
             if case .installing = runtime.state { installing = true } else { installing = false }
             return UpdateWait.of(voiceDownload: downloads.active != nil, engineInstall: installing,
-                                 connecting: connections.rows.values.contains { $0.busy != nil })
+                                 connecting: connections.rows.values.contains { $0.busy != nil },
+                                 engineRemoval: runtime.removing)
         }
         updater.afterLaunch(lowerOtherAudio: prefs.lowerOtherAudio) { otherAudio.askPermission() }
 

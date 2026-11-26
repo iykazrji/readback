@@ -187,7 +187,10 @@ import Testing
         _ = flow.install()
         flow.failed(.digestMismatch)
         #expect(flow.card == .installFailed(release, .digestMismatch))
-        #expect(flow.install() == .download(release))
+        // Deep review 2026-11-26, P2-8: this expected `.download(release)`, the same URL and
+        // digest that just failed. A fixed or newer release is only found by asking again.
+        #expect(flow.install() == .fetch)
+        #expect(flow.checked(.success(release), current: "0.5.0", problem: nil) == .download(release))
     }
 
     @Test func flowIgnoresRepeats() {

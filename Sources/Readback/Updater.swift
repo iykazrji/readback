@@ -150,7 +150,12 @@ final class Updater: ObservableObject {
         guard let app = findApp(in: unpacked) else { throw InstallFailure.noApp }
 
         let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")) as? [String: Any] ?? [:]
-        if let failure = Updates.check(newInfo: info, bundleID: Bundle.main.bundleIdentifier ?? "", current: Bundle.main.version) {
+        // Its executable's slices, so a build for another Mac never replaces one that works here.
+        let executable = (info["CFBundleExecutable"] as? String).map { app.appendingPathComponent("Contents/MacOS/\($0)").path }
+        let architectures = executable.flatMap { output("/usr/bin/lipo", ["-archs", $0]) }?
+            .split(whereSeparator: \.isWhitespace).map(String.init) ?? []
+        if let failure = Updates.check(newInfo: info, bundleID: Bundle.main.bundleIdentifier ?? "", current: Bundle.main.version,
+                                       offered: release.version, architectures: architectures) {
             throw failure
         }
         guard run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path]) == 0 else { throw InstallFailure.signature }
@@ -175,15 +180,30 @@ final class Updater: ObservableObject {
     /// moment with no Readback in place. Then a small shell waits for this process to end and
     /// opens the new copy, and the app quits.
     private func swapAndRelaunch(with app: URL, leaving version: String, work: URL) throws {
+        // Asked again here, not only at the click: a download, an engine install or a Connect
+        // started while the zip came in would be cut off by the quit (deep review, P2-5).
+        if let wait = waitingOn() { throw InstallFailure.busy(wait) }
         let installed = Bundle.main.bundleURL
+        let files = FileManager.default
         UserDefaults.standard.set(version, forKey: Self.leavingKey)
+        var staging: URL?
         do {
-            _ = try FileManager.default.replaceItemAt(installed, withItemAt: app)
+            // Staged on the installed copy's own volume: the swap can't cross volumes, and the
+            // download sits on the startup disk (deep review, P2-6).
+            let folder = try files.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: installed, create: true)
+            staging = folder
+            let staged = folder.appendingPathComponent(installed.lastPathComponent)
+            try files.moveItem(at: app, to: staged)
+            _ = try files.replaceItemAt(installed, withItemAt: staged)
         } catch {
             UserDefaults.standard.removeObject(forKey: Self.leavingKey)
+            if let staging { try? files.removeItem(at: staging) }
             throw InstallFailure.swap(error.localizedDescription)
         }
-        Log.info("update: \(installed.path) is now the new version; reopening")
+        if let staging { try? files.removeItem(at: staging) }
+        // Versions only: where the app lives can name the person (deep review, P2-4).
+        // The new copy logs "updated from … to …" when it starts.
+        Log.info("update: the new version is in place of \(version); reopening")
         cleanUp(work)   // the zip and what's left of the unpacked folder
         let waiter = Process()
         waiter.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -201,6 +221,20 @@ final class Updater: ObservableObject {
 
     private func cleanUp(_ folder: URL) {
         try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// Runs a tool and returns what it printed, or nil when it failed.
+    nonisolated private static func output(_ tool: String, _ arguments: [String]) -> String? {
+        let process = Process()
+        let out = Pipe()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : nil
     }
 
     /// Runs a tool and returns its exit status, or -1 when it couldn't start.

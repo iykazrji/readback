@@ -182,6 +182,68 @@ final class DeepReviewDuckingTests: XCTestCase {
     }
 }
 
+/// P2-5, P2-7, P2-8: the updater. Release.parse reads GitHub's releases/latest; the Info.plist and
+/// architectures come from the unzipped app (Updater.unpackAndCheck, `lipo -archs`).
+final class DeepReviewUpdateTests: XCTestCase {
+    private let release = Release(version: "0.6.0", zip: URL(string: "https://example.com/a/Readback.zip")!, sha256: "ab",
+                                  page: URL(string: "https://example.com/r")!, size: 100)
+    private let info: [String: Any] = ["CFBundleIdentifier": "local.readback", "CFBundleShortVersionString": "0.6.0",
+                                       "LSMinimumSystemVersion": "15.0"]
+    private let sequoia = OperatingSystemVersion(majorVersion: 15, minorVersion: 2, patchVersion: 0)
+
+    /// P2-7: the app in the zip is the version that was offered, has this Mac's architecture and
+    /// runs on this macOS, or the working copy isn't replaced.
+    func testTheNewAppMustBeTheOneOfferedAndRunHere() {
+        XCTAssertNil(Updates.check(newInfo: info, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                   architectures: ["arm64"], machine: "arm64", system: sequoia))
+        var later = info
+        later["CFBundleShortVersionString"] = "0.7.0"
+        XCTAssertEqual(Updates.check(newInfo: later, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                     architectures: ["arm64"], machine: "arm64", system: sequoia), .notOffered)
+        XCTAssertEqual(Updates.check(newInfo: info, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                     architectures: ["x86_64"], machine: "arm64", system: sequoia), .incompatible)
+        var newerOS = info
+        newerOS["LSMinimumSystemVersion"] = "26.0"
+        XCTAssertEqual(Updates.check(newInfo: newerOS, bundleID: "local.readback", current: "0.5.0", offered: "0.6.0",
+                                     architectures: ["arm64", "x86_64"], machine: "arm64", system: sequoia), .incompatible)
+        XCTAssertNil(Updates.check(newInfo: info, bundleID: "local.readback", current: "0.5.0", offered: "v0.6.0",
+                                   architectures: ["x86_64", "arm64"], machine: "arm64", system: sequoia), "a tag's v doesn't count")
+    }
+
+    /// P2-5: removing the engine is work Install waits for too, and so is anything started while
+    /// the zip downloaded: the swap asks again and stops, changing nothing.
+    func testRemovingTheEngineHoldsInstallAndTheSwapAsksAgain() {
+        XCTAssertEqual(UpdateWait.of(voiceDownload: false, engineInstall: false, connecting: false, engineRemoval: true), .engineRemoval)
+        XCTAssertTrue(InstallFailure.busy(.voiceDownload).message.hasSuffix(InstallFailure.unchanged))
+        XCTAssertTrue(InstallFailure.busy(.voiceDownload).message.contains(UpdateWait.voiceDownload.message))
+    }
+
+    /// P2-8: Try again after a failed install asks GitHub again, so a corrected or newer release is
+    /// what downloads, not the one that failed.
+    func testTryAgainFetchesTheReleaseAgain() {
+        var flow = UpdateFlow()
+        _ = flow.check()
+        _ = flow.checked(.success(release), current: "0.5.0", problem: nil)
+        _ = flow.install()
+        flow.failed(.digestMismatch)
+        XCTAssertEqual(flow.install(), .fetch, "asks again first")
+        XCTAssertEqual(flow.card, .checking)
+        let fixed = Release(version: "0.6.1", zip: URL(string: "https://example.com/b/Readback.zip")!, sha256: "cd",
+                            page: release.page, size: 100)
+        XCTAssertEqual(flow.checked(.success(fixed), current: "0.5.0", problem: nil), .download(fixed), "and installs what it finds")
+    }
+
+    /// A card that says the app can't replace itself can check again once the person has moved it.
+    func testCantReplaceCanCheckAgain() {
+        var flow = UpdateFlow()
+        _ = flow.check()
+        _ = flow.checked(.success(release), current: "0.5.0", problem: .readOnly)
+        XCTAssertEqual(flow.check(), .fetch)
+        XCTAssertEqual(flow.checked(.success(release), current: "0.5.0", problem: nil), nil)
+        XCTAssertEqual(flow.card, .available(release))
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)

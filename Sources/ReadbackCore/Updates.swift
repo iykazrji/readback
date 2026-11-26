@@ -93,11 +93,37 @@ public enum Updates {
         return writable ? nil : .readOnly
     }
 
-    /// What's wrong with the unzipped app, from its Info.plist, or nil when it's a newer Readback.
-    public static func check(newInfo: [String: Any], bundleID: String, current: String) -> InstallFailure? {
+    /// This Mac's architecture as `lipo -archs` names it.
+    public static var machine: String {
+        #if arch(arm64)
+        return "arm64"
+        #else
+        return "x86_64"
+        #endif
+    }
+
+    /// What's wrong with the unzipped app, or nil when it's a newer Readback that runs here. From
+    /// its Info.plist; `offered`: the version the card showed; `architectures`: its executable's
+    /// slices. A bundle that passes the signature check can still be the wrong version, or not run
+    /// on this Mac, and the swap would replace a working copy with it (deep review 2026-11-26, P2-7).
+    public static func check(newInfo: [String: Any], bundleID: String, current: String, offered: String? = nil,
+                             architectures: [String]? = nil, machine: String = Updates.machine,
+                             system: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> InstallFailure? {
         guard newInfo["CFBundleIdentifier"] as? String == bundleID,
               let version = newInfo["CFBundleShortVersionString"] as? String else { return .wrongApp }
-        return isNewer(version, than: current) ? nil : .notNewer
+        guard isNewer(version, than: current) else { return .notNewer }
+        if let offered, plain(version).compare(plain(offered), options: .numeric) != .orderedSame { return .notOffered }
+        if let architectures, !architectures.contains(machine) { return .incompatible }
+        if let minimum = newInfo["LSMinimumSystemVersion"] as? String, !runs(on: system, minimum: minimum) { return .incompatible }
+        return nil
+    }
+
+    /// "15.0" or "15.2.1" against the running macOS.
+    static func runs(on system: OperatingSystemVersion, minimum: String) -> Bool {
+        let parts = minimum.split(separator: ".").map { Int($0) ?? 0 } + [0, 0, 0]
+        let needed = OperatingSystemVersion(majorVersion: parts[0], minorVersion: parts[1], patchVersion: parts[2])
+        return (system.majorVersion, system.minorVersion, system.patchVersion)
+            >= (needed.majorVersion, needed.minorVersion, needed.patchVersion)
     }
 
     /// `/bin/sh` arguments that wait for `pid` to exit, then open `app` again, carrying every
@@ -151,12 +177,21 @@ public enum InstallFailure: Error, Equatable {
     case noApp
     case wrongApp
     case notNewer
+    /// The app in the zip isn't the version that was offered.
+    case notOffered
+    /// It's built for another Mac, or needs a newer macOS.
+    case incompatible
     case signature
+    /// Something Install waits for started while the zip downloaded.
+    case busy(UpdateWait)
     case swap(String)
 
     public var message: String {
         let reason: String
         switch self {
+        case .notOffered: reason = "The download wasn\u{2019}t the version GitHub listed."
+        case .incompatible: reason = "The new version won\u{2019}t run on this Mac."
+        case .busy(let wait): reason = "Installing now would cut off something you started. " + wait.message
         case .download(let why): reason = "The download didn\u{2019}t finish. " + sentence(why)
         case .noDigest: reason = "Readback couldn\u{2019}t check that the download is genuine."
         case .digestMismatch: reason = "The download didn\u{2019}t match the file on GitHub."
@@ -191,10 +226,12 @@ public enum ReplaceProblem: Equatable {
 /// away a voice the person asked for; mid-Connect could leave a tool's config half-written,
 /// which PRODUCT.md's "safe" rules out. (Builder check, 2026-11-26.)
 public enum UpdateWait: Equatable {
-    case engineInstall, voiceDownload, connecting
+    case engineInstall, engineRemoval, voiceDownload, connecting
 
-    public static func of(voiceDownload: Bool, engineInstall: Bool, connecting: Bool) -> UpdateWait? {
+    /// The one question the card and the swap both ask (deep review 2026-11-26, P2-5).
+    public static func of(voiceDownload: Bool, engineInstall: Bool, connecting: Bool, engineRemoval: Bool = false) -> UpdateWait? {
         if engineInstall { return .engineInstall }
+        if engineRemoval { return .engineRemoval }
         if voiceDownload { return .voiceDownload }
         return connecting ? .connecting : nil
     }
@@ -202,6 +239,7 @@ public enum UpdateWait: Equatable {
     public var message: String {
         switch self {
         case .engineInstall: return "You can install it when the voice engine finishes installing."
+        case .engineRemoval: return "You can install it when the voice engine finishes being removed."
         case .voiceDownload: return "You can install it when the voice download finishes."
         case .connecting: return "You can install it when your tools finish connecting."
         }
@@ -234,16 +272,21 @@ public enum UpdateEffect: Equatable {
 /// second click or a late progress report can't jump the card somewhere wrong.
 public struct UpdateFlow: Equatable {
     public private(set) var card: UpdateCard = .rest
+    /// Try again after a failed install: it asks GitHub again first, then installs what it finds.
+    private var installAfterCheck = false
 
     public init() {}
 
     /// "Up to date" shows this long before the card goes back to rest.
     public static let upToDateFor: Double = 3
 
+    /// Also from a card that couldn't replace the app (moved since, say) or a failed install: the
+    /// release may have been fixed or replaced since (deep review 2026-11-26, P2-8).
     public mutating func check() -> UpdateEffect? {
         switch card {
-        case .rest, .upToDate, .checkFailed:
+        case .rest, .upToDate, .checkFailed, .cantReplace, .installFailed:
             card = .checking
+            installAfterCheck = false
             return .fetch
         default:
             return nil
@@ -252,6 +295,8 @@ public struct UpdateFlow: Equatable {
 
     public mutating func checked(_ result: Result<Release, CheckFailure>, current: String, problem: ReplaceProblem?) -> UpdateEffect? {
         guard card == .checking else { return nil }
+        let thenInstall = installAfterCheck
+        installAfterCheck = false
         switch result {
         case .failure(let failure):
             card = .checkFailed(failure)
@@ -260,18 +305,32 @@ public struct UpdateFlow: Equatable {
             card = .upToDate
             return .expireUpToDate(seconds: Self.upToDateFor)
         case .success(let release):
-            card = problem.map { .cantReplace(release, $0) } ?? .available(release)
-            return nil
+            if let problem {
+                card = .cantReplace(release, problem)
+                return nil
+            }
+            guard thenInstall else {
+                card = .available(release)
+                return nil
+            }
+            card = .downloading(release, received: 0, total: release.size ?? 0)
+            return .download(release)
         }
     }
 
     /// Install starts only when nothing else is in the middle of something; `waitingOn` says what.
+    /// Try again after a failed install asks GitHub again first, so a release that was fixed or
+    /// replaced since is the one that downloads, not the one that failed.
     public mutating func install(waitingOn wait: UpdateWait? = nil) -> UpdateEffect? {
         guard wait == nil else { return nil }
         switch card {
-        case .available(let release), .installFailed(let release, _):
+        case .available(let release):
             card = .downloading(release, received: 0, total: release.size ?? 0)
             return .download(release)
+        case .installFailed:
+            card = .checking
+            installAfterCheck = true
+            return .fetch
         default:
             return nil
         }

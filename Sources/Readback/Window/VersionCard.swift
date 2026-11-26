@@ -59,9 +59,21 @@ struct VersionCard: View {
         case .cantReplace(let release, let problem):
             heading("Readback \(release.version) is out")
             note(problem.message)
-            Button("Download page") { updater.openPage(release) }
+            // Laid out like Couldn't install: two buttons side by side don't fit the sidebar.
+            Button(action: { updater.openPage(release) }) {
+                Text("Download page").frame(maxWidth: .infinity)
+            }
                 .controlSize(.small)
                 .padding(.top, 10)
+            // Once the app's been moved or the folder fixed, it can update itself.
+            HStack {
+                Spacer()
+                Button("Check again", action: updater.check)
+                    .buttonStyle(.readback(.quiet))
+                    .controlSize(.small)
+                    .padding(.trailing, -ControlMetrics.smallQuietPadding)
+            }
+            .padding(.top, 4)
         case .downloading(let release, let received, let total):
             heading("Downloading \(release.version)")
             Meter(fraction: total > 0 ? Double(received) / Double(total) : nil)
@@ -102,12 +114,10 @@ struct VersionCard: View {
         }
     }
 
-    /// What Install would cut off right now. Read here so the card updates as that work finishes.
+    /// What Install would cut off right now: the same answer the install itself acts on. The card
+    /// watches runtime, downloads and connections, so it updates as that work finishes.
     private var wait: UpdateWait? {
-        let installing: Bool
-        if case .installing = runtime.state { installing = true } else { installing = false }
-        return UpdateWait.of(voiceDownload: downloads.active != nil, engineInstall: installing,
-                             connecting: connections.rows.values.contains { $0.busy != nil })
+        updater.waitingOn()
     }
 
     /// "Readback 0.5.0": opens About.
