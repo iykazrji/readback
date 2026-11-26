@@ -244,6 +244,48 @@ final class DeepReviewUpdateTests: XCTestCase {
     }
 }
 
+/// P2-9: two replies in one session within one second stay in the order they arrived through a
+/// save and load, and Home's newest is the newer one. Replies come from ReplyQueue.received in
+/// production; History saves with ReplyHistory.save and the app loads with ReplyHistory.load.
+final class DeepReviewSameSecondTests: XCTestCase {
+    private let t = Date(timeIntervalSince1970: 1_800_000_000.2)
+    // Ids chosen so that breaking a tie by id (smallest first) picks the older one.
+    private let older = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    private let newer = UUID(uuidString: "FFFFFFFF-0000-0000-0000-000000000000")!
+
+    func testHomesNewestIsTheNewerAfterASaveAndLoad() throws {
+        var history = ReplyHistory()
+        history.add(Reply(id: older, text: "Older", source: "claude", cwd: "/p", session: "s", received: t, state: .kept))
+        history.add(Reply(id: newer, text: "Newer", source: "claude", cwd: "/p", session: "s", received: t + 0.5, state: .kept))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("history-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try history.save(to: url)
+        let loaded = try XCTUnwrap(ReplyHistory.load(from: url))
+        XCTAssertEqual(loaded.replies.map(\.text), ["Newer", "Older"])
+        XCTAssertEqual(SessionSummary.sessions(from: loaded.replies).first?.newest.text, "Newer")
+    }
+
+    /// An exact tie keeps History's order: newest first, as replies arrived.
+    func testAnExactTieKeepsHistorysOrder() {
+        var history = ReplyHistory()
+        history.add(Reply(id: older, text: "Older", source: "claude", cwd: "/p", session: "s", received: t, state: .kept))
+        history.add(Reply(id: newer, text: "Newer", source: "claude", cwd: "/p", session: "s", received: t, state: .kept))
+        XCTAssertEqual(SessionSummary.sessions(from: history.replies).first?.replies.map(\.text), ["Newer", "Older"])
+        let cleared = history.clearForUndo()
+        history.restore(cleared)
+        XCTAssertEqual(history.replies.map(\.text), ["Newer", "Older"], "Undo puts them back in the same order")
+    }
+
+    /// A history saved before this version, in whole seconds, still loads.
+    func testAnOlderHistoryWithWholeSecondsStillLoads() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("history-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let json = #"{"limit":50,"replies":[{"id":"00000000-0000-0000-0000-000000000001","text":"Hi","received":"2026-11-20T10:00:00Z","state":"kept"}]}"#
+        try json.write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try ReplyHistory.load(from: url)?.replies.first?.received, Date(timeIntervalSince1970: 1_795_168_800))
+    }
+}
+
 final class DeepReviewPrivateFilesTests: XCTestCase {
     private func temp() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rb-private-\(UUID().uuidString)", isDirectory: true)

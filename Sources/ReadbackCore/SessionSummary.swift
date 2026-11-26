@@ -17,17 +17,22 @@ public struct SessionSummary: Identifiable, Equatable {
     public let unheard: [Reply]
 
     /// The `limit` most recent sessions, newest first.
+    /// `replies` in History's order, newest first: that order is how they arrived, so it breaks
+    /// a tie in time (deep review 2026-11-26, P2-9), and the rows never swap from one redraw to
+    /// the next.
     public static func sessions(from replies: [Reply], limit: Int = 8) -> [SessionSummary] {
+        let arrival = Dictionary(replies.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        func newerFirst(_ a: Reply, _ b: Reply) -> Bool {
+            a.received != b.received ? a.received > b.received : arrival[a.id, default: 0] < arrival[b.id, default: 0]
+        }
         let groups = Dictionary(grouping: replies, by: { key(of: $0) })
         let summaries = groups.map { id, group -> SessionSummary in
-            let sorted = group.sorted { ($0.received, $1.id.uuidString) > ($1.received, $0.id.uuidString) }
+            let sorted = group.sorted(by: newerFirst)
             let newest = sorted[0]
             return SessionSummary(id: id, tool: newest.source.flatMap(Tool.init(source:)), project: project(of: newest), count: sorted.count,
                                   newest: newest, replies: sorted, unheard: [])
         }
-        // Newest first; a tie (History keeps whole seconds) always breaks the same way, by id, so
-        // the rows never swap places from one redraw to the next.
-        return Array(summaries.sorted { ($0.newest.received, $1.id) > ($1.newest.received, $0.id) }.prefix(limit))
+        return Array(summaries.sorted { newerFirst($0.newest, $1.newest) }.prefix(limit))
     }
 
     /// The session a reply belongs to, as Home groups it: its `session`, or folder and tool when
