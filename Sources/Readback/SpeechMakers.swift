@@ -9,6 +9,13 @@ protocol SpeechMaker {
     /// Gets ready (starts a server, loads a model). Called once per reply.
     func prepare() async throws
     func make(_ text: String, to file: URL) async throws
+    /// The model this voice downloads before it can speak, if any: the player shows that
+    /// download, and only that one, as this reading's.
+    var downloadModel: String? { get }
+}
+
+extension SpeechMaker {
+    var downloadModel: String? { nil }
 }
 
 enum SpeechError: Error, CustomStringConvertible {
@@ -144,6 +151,7 @@ struct NeuralVoice: SpeechMaker {
     let lang: String
     var delivery: Delivery = .natural
     var fileExtension: String { "wav" }
+    var downloadModel: String? { model }
 
     func prepare() async throws {
         try await server.ensureRunning(warming: model, voice: voice, lang: lang)
