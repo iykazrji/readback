@@ -9,6 +9,13 @@ protocol SpeechMaker {
     /// Gets ready (starts a server, loads a model). Called once per reply.
     func prepare() async throws
     func make(_ text: String, to file: URL) async throws
+    /// The model this voice downloads before it can speak, if any: the player shows that
+    /// download, and only that one, as this reading's.
+    var downloadModel: String? { get }
+}
+
+extension SpeechMaker {
+    var downloadModel: String? { nil }
 }
 
 enum SpeechError: Error, CustomStringConvertible {
@@ -18,10 +25,12 @@ enum SpeechError: Error, CustomStringConvertible {
     case badResponse(Int, String)
     case notInstalled
     case downloadFailed(String)
+    case downloadCancelled
 
     var description: String {
         switch self {
         case .downloadFailed(let reason): return "the voice didn't finish downloading (\(reason)). Check your internet connection and try again"
+        case .downloadCancelled: return "its voice download was cancelled"
         case .noAudio: return "the voice made no audio"
         case .timedOut: return "the voice took too long"
         case .serverDidNotStart: return "the voice engine didn't start within 90 seconds"
@@ -142,6 +151,7 @@ struct NeuralVoice: SpeechMaker {
     let lang: String
     var delivery: Delivery = .natural
     var fileExtension: String { "wav" }
+    var downloadModel: String? { model }
 
     func prepare() async throws {
         try await server.ensureRunning(warming: model, voice: voice, lang: lang)
@@ -162,7 +172,11 @@ actor VoiceServer {
     private var warmed: Set<String> = []
     /// One download per model, however many callers want it (the launch warm-up and a reply can overlap).
     private var downloading: [String: Task<Void, Error>] = [:]
-    private var downloadProcess: Process?
+    private var downloadProcesses: [String: Process] = [:]
+    /// Models whose download the person cancelled; checked when the download ends or before it starts.
+    private var cancelled: Set<String> = []
+    /// Downloads in the order they were asked for; the first one runs.
+    private var downloadQueue: [String] = []
     private var base: URL { URL(string: "http://127.0.0.1:\(Self.port)")! }
 
     init(downloads: ModelDownloads) {
@@ -171,7 +185,23 @@ actor VoiceServer {
 
     var isInstalled: Bool { FileManager.default.isExecutableFile(atPath: paths.voiceServer.path) }
 
+    /// The last model change asked for. An actor gives way at every await, so without this a
+    /// launch warm-up, a sample and Download now could interleave: two downloads sharing one
+    /// handle, or one caller restarting the engine while another is loading.
+    private var transition: Task<Void, Error>?
+
+    /// Starts the engine with `model` loaded, after any change asked for earlier is done.
     func ensureRunning(warming model: String, voice: String, lang: String) async throws {
+        let earlier = transition
+        let mine = Task {
+            _ = await earlier?.result
+            try await self.load(model, voice: voice, lang: lang)
+        }
+        transition = mine
+        try await mine.value
+    }
+
+    private func load(_ model: String, voice: String, lang: String) async throws {
         guard isInstalled else { throw SpeechError.notInstalled }
         // A model that isn't on disk yet downloads first, with progress, instead of inside the
         // engine's first request where nothing can see how far it's got.
@@ -181,7 +211,7 @@ actor VoiceServer {
         // 2026-11-23, once loaded: Kokoro 850 MB, Soprano 730 MB, MeloTTS 3.1 GB, Qwen3 3.5 GB.
         if !warmed.isEmpty, !warmed.contains(model), child?.isRunning == true {
             Log.info("switching the voice engine to \(model): restarting it to free the last model's memory")
-            await stop()
+            await stop(downloads: false)
         }
         // An engine this copy didn't start (left by a crash or an earlier copy) may hold every
         // model it ever loaded; it goes, and a fresh one starts.
@@ -227,12 +257,15 @@ actor VoiceServer {
         try data.write(to: file)
     }
 
-    /// Stops the engine (and any download) and waits for it to exit, so a fresh engine never
-    /// meets the old one still holding the port.
-    func stop() async {
-        if let downloadProcess, downloadProcess.isRunning {
-            Log.info("stopping the voice download (pid \(downloadProcess.processIdentifier))")
-            downloadProcess.terminate()
+    /// Stops the engine and waits for it to exit, so a fresh engine never meets the old one still
+    /// holding the port. `downloads`: also stop any download (quitting, removing the engine); a
+    /// voice switch restarts the engine but leaves a download of another voice running.
+    func stop(downloads stopDownloads: Bool = true) async {
+        if stopDownloads {
+            for (model, process) in downloadProcesses where process.isRunning {
+                Log.info("stopping the download of \(model) (pid \(process.processIdentifier))")
+                process.terminate()
+            }
         }
         warmed = []
         guard let child, child.isRunning else { self.child = nil; return }
@@ -262,7 +295,9 @@ actor VoiceServer {
         for pid in Self.listeners(on: Self.port) {
             let command = Self.command(of: pid)
             guard command.contains(paths.voiceServer.path) else {
-                Log.error("port \(Self.port) is held by another program (pid \(pid)): \(command.prefix(120))")
+                // The program's name, not its arguments, which can hold anything.
+                let name = command.split(separator: " ").first.map { URL(fileURLWithPath: String($0)).lastPathComponent } ?? "unknown"
+                Log.error("port \(Self.port) is held by another program (\(name), pid \(pid))")
                 continue
             }
             Log.info("ending a voice engine left over from before (pid \(pid)) to free its memory")
@@ -299,6 +334,27 @@ actor VoiceServer {
 
     // MARK: Downloading a model
 
+    /// Downloads a model without loading it (Voices' Download button), so it's ready whenever
+    /// it's picked. Waits for a download of another model to finish first: one at a time.
+    func download(_ model: String) async throws {
+        guard isInstalled else { throw SpeechError.notInstalled }
+        cancelled.remove(model)   // asked for outright: an earlier Cancel doesn't stand in the way
+        try await ensureDownloaded(model)
+    }
+
+    /// Stops a model's download and deletes what it had fetched. A reply waiting for that model
+    /// fails with `downloadCancelled`.
+    /// `evenIfNotStarted`: the install's Cancel, which can come before its download has begun;
+    /// that download then doesn't begin, until `allowDownload`.
+    func cancelDownload(_ model: String, evenIfNotStarted: Bool = false) {
+        guard downloading[model] != nil || evenIfNotStarted else { return }
+        cancelled.insert(model)
+        downloadProcesses[model]?.terminate()
+    }
+
+    /// Lets `model` download again once the install that cancelled it has ended.
+    func allowDownload(of model: String) { cancelled.remove(model) }
+
     private func ensureDownloaded(_ model: String) async throws {
         if let running = downloading[model] {
             try await running.value
@@ -307,15 +363,41 @@ actor VoiceServer {
         guard !ModelCache().isDownloaded(model, expectedBytes: VoiceCatalog.downloadBytes(for: model)) else { return }
         // Not tied to the reply that asked: closing the player shouldn't throw away a 3 GB
         // download half done, so it carries on and the next reply picks it up.
-        let task = Task { try await self.download(model) }
+        let task = Task { try await self.downloadInTurn(model) }
         downloading[model] = task
         defer { downloading[model] = nil }
         try await task.value
     }
 
+    /// One download at a time, first come first served: two at once would split the bandwidth
+    /// and the progress line. (Waiting on "any other download" instead deadlocks when two start
+    /// together, each waiting for the other.)
+    private func downloadInTurn(_ model: String) async throws {
+        downloadQueue.append(model)
+        defer { downloadQueue.removeAll { $0 == model } }
+        while let ahead = downloadQueue.first, ahead != model {
+            if let task = downloading[ahead] {
+                _ = try? await task.value
+            }
+            downloadQueue.removeAll { $0 == ahead }
+        }
+        if cancelled.remove(model) != nil { throw SpeechError.downloadCancelled }
+        try await download(fetching: model)
+    }
+
     /// Runs `ModelDownloadScript` in the engine's Python and passes its progress to `downloads`.
-    private func download(_ model: String) async throws {
+    private func download(fetching model: String) async throws {
         Log.info("downloading \(model)")
+        // Opened before the download is announced: a log that can't be opened fails it like any
+        // download that stops short, with Try again, rather than leaving a row that never ends.
+        let engineLog: FileHandle
+        do { engineLog = try logHandle() } catch {
+            Log.error("downloading \(model) couldn't start: couldn't open the engine's log: \(error)")
+            await downloads.failed(model, reason: "Readback couldn't open its log file")
+            throw SpeechError.downloadFailed("couldn't open the engine's log")
+        }
+        // What the cache held before, so Cancel takes back only what this download adds.
+        let before = ModelCache().inventory(of: model)
         await downloads.started(model)
         let lines = DownloadLines { [downloads] event in
             if case .progress(let received, let total) = event {
@@ -332,9 +414,9 @@ actor VoiceServer {
         makeNLTKFolder()
         let out = Pipe()
         process.standardOutput = out
-        process.standardError = try logHandle()   // Python's own warnings and tracebacks
+        process.standardError = engineLog   // Python's own warnings and tracebacks
         out.fileHandleForReading.readabilityHandler = { lines.add($0.availableData) }
-        downloadProcess = process
+        downloadProcesses[model] = process
         let status: Int32
         do {
             status = try await withCheckedThrowingContinuation { cont in
@@ -345,12 +427,29 @@ actor VoiceServer {
                 }
             }
         } catch {
+            // The download step couldn't start: the same Try again as one that stopped short.
+            out.fileHandleForReading.readabilityHandler = nil
+            downloadProcesses[model] = nil
+            Log.error("downloading \(model) couldn't start: \(error)")
             await downloads.ended(model)
-            throw error
+            await downloads.failed(model, reason: "the download couldn't start")
+            throw SpeechError.downloadFailed("the download couldn't start")
         }
         out.fileHandleForReading.readabilityHandler = nil
         lines.add(out.fileHandleForReading.readDataToEndOfFile())   // whatever came after the last read
-        downloadProcess = nil
+        downloadProcesses[model] = nil
+        if cancelled.remove(model) != nil {
+            // Cancelled: nothing half-fetched stays behind to look like a broken download, and
+            // nothing that was there before it started goes.
+            do {
+                let freed = try ModelCache().discardDownload(of: model, since: before)
+                Log.info("cancelled downloading \(model); removed \(freed.formatted(.byteCount(style: .file))) it had fetched")
+            } catch {
+                Log.error("cancelled downloading \(model), but couldn't remove what it had fetched: \(error)")
+            }
+            await downloads.cancelled(model)
+            throw SpeechError.downloadCancelled
+        }
         await downloads.ended(model)
         guard status == 0, lines.finished else {
             let reason = lines.failure ?? "it stopped (exit \(status))"
@@ -372,11 +471,12 @@ actor VoiceServer {
     }
 
     private func logHandle() throws -> FileHandle {
-        try FileManager.default.createDirectory(at: paths.logs, withIntermediateDirectories: true)
+        try PrivateFiles.makeFolder(paths.logs)
         let logURL = paths.logs.appendingPathComponent("voice-engine.log")
         if !FileManager.default.fileExists(atPath: logURL.path) {
-            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            FileManager.default.createFile(atPath: logURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
         }
+        PrivateFiles.narrow(logURL)   // created 0644 before this version
         let handle = try FileHandle(forWritingTo: logURL)
         try handle.seekToEnd()
         return handle
@@ -394,7 +494,11 @@ actor VoiceServer {
         let process = Process()
         process.executableURL = paths.voiceServer
         process.currentDirectoryURL = paths.runtime
+        // mlx-audio allows every origin unless told otherwise ("*"). Its own origin is one no
+        // web page has, so browsers can neither read its answers nor send it JSON. Readback's
+        // requests come from URLSession, which sends no Origin.
         process.arguments = ["--host", "127.0.0.1", "--port", String(Self.port),
+                             "--allowed-origins", "http://127.0.0.1:\(Self.port)",
                              "--log-dir", paths.logs.appendingPathComponent("voice-engine").path]
         var env = ProcessInfo.processInfo.environment
         env["PYTHONUNBUFFERED"] = "1"

@@ -99,3 +99,39 @@ final class HTTPRequestTests: XCTestCase {
         XCTAssertEqual(SpeakRequest(text: "x", source: "OpenCode", cwd: "/").title, "OpenCode")
     }
 }
+
+/// B22: fences and tables in the forms CommonMark and GitHub accept, which agents do send.
+final class MarkdownFormsTests: XCTestCase {
+    func testTildeFencesAreSkipped() {
+        XCTAssertEqual(SpeechText.clean("Run this:\n~~~sh\nrm -rf build\n~~~\nDone."), "Run this:\n\n(code block skipped)\n\nDone.")
+    }
+
+    func testALongerFenceHoldsShorterOnesInside() {
+        let reply = "Example:\n````md\n```swift\nlet x = 1\n```\n````\nThat's it."
+        XCTAssertEqual(SpeechText.clean(reply), "Example:\n\n(code block skipped)\n\nThat's it.")
+    }
+
+    func testTablesWithoutEdgePipesAreSkipped() {
+        let reply = "Results:\nName | Count\n--- | ---:\nfoo | 3\nbar | 4\n\nAll good."
+        XCTAssertEqual(SpeechText.clean(reply), "Results:\n(table skipped)\n\nAll good.")
+    }
+
+    func testAPipeInAnOrdinarySentenceStays() {
+        XCTAssertEqual(SpeechText.clean("Use a | b to pipe it."), "Use a | b to pipe it.")
+    }
+}
+
+/// Codex review round 1, #12: only real fences and tables are skipped.
+final class MarkdownBoundsTests: XCTestCase {
+    func testAFourSpaceIndentIsNotAFence() {
+        let spoken = SpeechText.clean("Useful summary:\n    ~~~\nFinal result: passed")
+        XCTAssertTrue(spoken.contains("Final result: passed"), spoken)
+        XCTAssertFalse(spoken.contains("skipped"), spoken)
+    }
+
+    func testADelimiterRowMustMatchTheHeaderWidth() {
+        let spoken = SpeechText.clean("A | B\n--- | --- | ---\nmore text")
+        XCTAssertFalse(spoken.contains("table skipped"), spoken)
+        XCTAssertTrue(spoken.contains("more text"), spoken)
+    }
+}

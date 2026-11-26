@@ -50,6 +50,12 @@ final class ModelDownloads: ObservableObject {
         if active?.model == model { active = nil }
     }
 
+    /// The person stopped it: not a failure, so nothing red is left behind.
+    func cancelled(_ model: String) {
+        if active?.model == model { active = nil }
+        if failure?.model == model { failure = nil }
+    }
+
     func status(for model: String?) -> Status? {
         guard let model, active?.model == model else { return nil }
         return active

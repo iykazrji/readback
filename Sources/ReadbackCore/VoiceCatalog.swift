@@ -84,6 +84,26 @@ public enum VoiceCatalog {
         return ids.compactMap(kokoroVoice)
     }()
 
+    /// Why `voice` can't be used with `engine`, or nil when it can. Kokoro's come from the list
+    /// above, not from what an id looks like.
+    public static func problem(voice: String, for engine: EngineKind, systemVoiceExists: (String) -> Bool) -> String? {
+        func examples(_ options: [VoiceOption]) -> String { options.prefix(3).map(\.id).joined(separator: ", ") }
+        switch engine {
+        case .system:
+            return voice.isEmpty || systemVoiceExists(voice) ? nil : "no macOS voice with id \(voice)"
+        case .kokoro:
+            return kokoroVoices.contains { $0.id == voice } ? nil : "Kokoro has no voice \(voice): try \(examples(kokoroVoices))"
+        case .melo:
+            return meloVoices.contains { $0.id == voice } ? nil : "MeloTTS has no accent \(voice): try \(meloVoices.map(\.id).joined(separator: ", "))"
+        case .soprano:
+            return "Soprano has one voice; there's nothing to pick"
+        case .qwen3:
+            return qwen3Voices.contains { $0.id == voice } ? nil : "Qwen3-TTS has no speaker \(voice): try \(examples(qwen3Voices))"
+        case .custom:
+            return nil
+        }
+    }
+
     public static func kokoroVoice(_ id: String) -> VoiceOption? {
         let languages: [Character: String] = [
             "a": "English (US)", "b": "English (UK)", "e": "Spanish", "f": "French",

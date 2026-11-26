@@ -27,8 +27,10 @@ final class Preferences: ObservableObject {
     @Published var cueSound: String { didSet { defaults.set(cueSound, forKey: "cueSound") } }
     /// A reply that should be read arrives while another is playing: wait its turn, or cut in.
     @Published var switchToNewReplies: Bool { didSet { defaults.set(switchToNewReplies, forKey: "switchToNewReplies") } }
-    /// Read every reply from a tool, whatever its sessions say.
+    /// Read every reply from a tool, whatever its sessions say. Published here for the Reading
+    /// page; saved through `switches`, which the CLI reads too.
     @Published private(set) var autoRead: [Tool: Bool]
+    let switches = ReadingSwitches(defaults: .standard)
 
     /// Kokoro on Apple silicon: natural and quick. Until its engine is installed, replies use the
     /// macOS voice (see AppDelegate.speaker()). Intel Macs can't run the engine.
@@ -54,30 +56,23 @@ final class Preferences: ObservableObject {
         escCloses = defaults.object(forKey: "escCloses") as? Bool ?? true
         switchToNewReplies = defaults.bool(forKey: "switchToNewReplies")
         cueSound = defaults.string(forKey: "cueSound") ?? "Pop"
-        autoRead = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, UserDefaults.standard.bool(forKey: "autoRead.\($0.rawValue)")) })
+        let switches = ReadingSwitches(defaults: .standard)
+        autoRead = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, switches.readsEveryReply($0)) })
     }
 
-    func setAutoRead(_ tool: Tool, _ on: Bool) {
+    func readsEveryReply(_ tool: Tool) -> Bool { autoRead[tool] ?? false }
+
+    func setReadsEveryReply(_ tool: Tool, _ on: Bool) {
         autoRead[tool] = on
-        defaults.set(on, forKey: "autoRead.\(tool.rawValue)")
+        switches.setReadsEveryReply(tool, on)
         Log.info("auto-read for \(tool.name) is \(on ? "on" : "off")")
     }
 
-    // MARK: Sessions
-
-    /// Sessions that turned read-aloud on for themselves (Claude Code's /speak on), newest last.
-    private var sessionsOn: [String] {
-        get { defaults.stringArray(forKey: "sessionsOn") ?? [] }
-        set { defaults.set(Array(newValue.suffix(500)), forKey: "sessionsOn") }
-    }
-
-    func isSessionOn(_ id: String) -> Bool { sessionsOn.contains(id) }
+    func isSessionOn(_ id: String) -> Bool { switches.isSessionOn(id) }
 
     func setSession(_ id: String, _ on: Bool) {
-        var list = sessionsOn.filter { $0 != id }
-        if on { list.append(id) }
-        sessionsOn = list
-        Log.info("read-aloud \(on ? "on" : "off") for session \(id)")
+        switches.setSession(id, on)
+        Log.info("read-aloud \(on ? "on" : "off") for a session")
     }
 
     // MARK: What to speak with
@@ -106,7 +101,10 @@ final class Preferences: ObservableObject {
             return VoiceSetup(engine: .qwen3, model: VoiceCatalog.qwen3Model, voice: qwen3Voice, lang: "auto",
                               delivery: qwen3Delivery)
         case .custom:
-            return VoiceSetup(engine: .custom, model: customModel, voice: customVoice, lang: customLang)
+            // Trimmed here, once, so what's shown and what's loaded are the same model.
+            return VoiceSetup(engine: .custom, model: customModel.trimmingCharacters(in: .whitespaces),
+                              voice: customVoice.trimmingCharacters(in: .whitespaces),
+                              lang: customLang.trimmingCharacters(in: .whitespaces))
         }
     }
 }

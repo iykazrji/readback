@@ -27,6 +27,8 @@ struct PlayerView: View {
     @ObservedObject var replies: Replies
     @ObservedObject var downloads: ModelDownloads
     var onClose: () -> Void
+    /// Stops a voice's download (the player's Cancel while a reply waits for its voice).
+    var onCancelDownload: (String) -> Void = { _ in }
     /// Plays a reply from the list, switching away from whatever is playing.
     var onPlay: (Reply) -> Void
     var onHover: (Bool) -> Void
@@ -84,7 +86,7 @@ struct PlayerView: View {
             .padding(.top, 14)
 
             Group {
-                if reader.phase == .preparing && reader.progress == 0, let download = downloads.active {
+                if reader.phase == .preparing && reader.progress == 0, let download = downloads.status(for: reader.voiceModel) {
                     // A voice's first download: minutes for Qwen3's 3 GB, so show how far it's got.
                     HStack(spacing: 10) {
                         DotProgress(progress: download.fraction ?? 0, pulsing: download.fraction == nil)
@@ -94,11 +96,12 @@ struct PlayerView: View {
                             .foregroundStyle(Theme.textDim)
                             .lineLimit(1)
                             .fixedSize()
+                            .accessibilityLabel("Downloading the voice")
+                            .accessibilityValue(download.amount)
+                        CancelDownloadButton { onCancelDownload(download.model) }
                     }
                     .frame(height: 16)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Downloading the voice")
-                    .accessibilityValue(download.amount)
+                    .accessibilityElement(children: .contain)
                 } else if reader.phase == .preparing && reader.progress == 0 {
                     // A first load can take a while; say what's happening.
                     HStack(spacing: 8) {
@@ -281,6 +284,8 @@ private struct ControlBar: View {
     @ObservedObject var reader: Reader
     @ObservedObject var replies: Replies
     var onClose: () -> Void
+    /// Stops a voice's download (the player's Cancel while a reply waits for its voice).
+    var onCancelDownload: (String) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: 2) {
@@ -293,7 +298,6 @@ private struct ControlBar: View {
                 IconButton(symbol: "arrow.counterclockwise", help: "Start over", action: reader.restart)
                 IconButton(symbol: "backward.fill", help: "Back a sentence", action: reader.back)
                 IconButton(symbol: playSymbol, help: playHelp, size: 13, action: reader.togglePlay)
-                    .disabled(reader.phase == .preparing && reader.progress == 0)
                 IconButton(symbol: "forward.fill", help: "Next sentence", action: reader.forward)
             }
             .disabled(isFailed || !reader.isActive)
@@ -337,9 +341,11 @@ private struct ControlBar: View {
         return false
     }
 
+    /// While a sentence is still being made, the button shows what happens once it's ready.
     private var playSymbol: String {
         switch reader.phase {
         case .playing: return "pause.fill"
+        case .preparing: return reader.startsPlaying ? "pause.fill" : "play.fill"
         default: return "play.fill"
         }
     }
@@ -347,6 +353,7 @@ private struct ControlBar: View {
     private var playHelp: String {
         switch reader.phase {
         case .playing: return "Pause"
+        case .preparing: return reader.startsPlaying ? "Pause" : "Play"
         case .finished: return "Play again"
         default: return "Play"
         }
@@ -568,5 +575,24 @@ private struct ReplyRow: View {
 private struct PressDim: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.opacity(configuration.isPressed ? 0.65 : 1)
+    }
+}
+
+/// The player's Cancel for a voice download: a quiet text button that brightens under the pointer.
+private struct CancelDownloadButton: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button("Cancel", action: action)
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(hovering ? Theme.textActive : Theme.label)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(hovering ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .onHover { hovering = $0 }
+            .help("Stop the download and delete what it fetched")
+            .accessibilityLabel("Cancel the voice download")
     }
 }
