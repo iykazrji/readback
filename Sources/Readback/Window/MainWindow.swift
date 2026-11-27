@@ -181,7 +181,7 @@ struct MainView: View {
         case .reading:
             Page(title: "Reading") {
                 ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition,
-                                setReading: { on in on ? app.turnReadingOn() : app.turnReadingOff(until: .distantFuture) })
+                                turnReadingOn: { app.turnReadingOn() }, turnReadingOff: { app.turnReadingOff(for: $0) })
             }
         case .connections:
             Page(title: "Connections") { ConnectionSettings(connections: app.connections, replies: app.replies) }
@@ -327,6 +327,7 @@ private struct Sidebar: View {
             Spacer(minLength: 12)
 
             VStack(spacing: 8) {
+                ReadingCard(app: app, prefs: prefs)
                 NowPlayingCard(app: app, reader: reader, prefs: prefs, runtime: app.runtime, showVoices: { selection = .voices })
                 VersionCard(updater: app.updater, downloads: app.downloads, runtime: app.runtime,
                             connections: app.connections, aboutSelected: selection == .about,
@@ -413,6 +414,67 @@ private struct SidebarRowStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// Turning reading off from the window, on every page: Turn reading off opens the menu bar's
+/// three lengths, and while it's off the card says until when, with Turn on. The owner picked
+/// this from a prototype on 2026-11-27 over a row at the top of Home, the action in Home's
+/// section headers, and a bare button in the corner. It's the window's off notice, so Home has
+/// none of its own (off is easy to forget, and then Readback looks broken). Headed "Read replies
+/// out loud" rather than "Reading": the card under it says "Reading" while a reply plays.
+private struct ReadingCard: View {
+    let app: AppDelegate
+    @ObservedObject var prefs: Preferences
+
+    var body: some View {
+        Group {
+            if let until = prefs.readingOffUntil { off(until) } else { on }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .surface(radius: Radius.sidebarCard, emphasis: prefs.readingOffUntil == nil ? .resting : .active, on: .sidebar)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var on: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "speaker.wave.2.fill").accessibilityHidden(true)
+                Text("Read replies out loud").lineLimit(1)
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            MenuButton(title: "Turn reading off", fullWidth: true,
+                       items: { ReadingOff.Length.allCases.map { $0.menuTitle(now: Date()) } },
+                       choose: { app.turnReadingOff(for: ReadingOff.Length.allCases[$0]) })
+        }
+    }
+
+    private func off(_ until: Date) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "speaker.slash.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                // The minute tick keeps "tomorrow" true past midnight. Two lines at most and no
+                // fixed height: in the sidebar a fixed-height text is measured at its narrowest
+                // for the window's minimum size, and that pushed the whole window's content up.
+                TimelineView(.everyMinute) { context in
+                    Text(ReadingOff.status(until: until, now: context.date))
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(2)
+                }
+            }
+            Text("Replies still show up.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Button { app.turnReadingOn() } label: { Text("Turn on").frame(maxWidth: .infinity) }
+                .buttonStyle(.readback(.primary))
+                .controlSize(.small)
+                .padding(.top, 4)
+        }
     }
 }
 
