@@ -76,8 +76,8 @@ struct Dropdown<Value: Hashable>: View {
     }
 }
 
-/// The button's place on screen, for the menu to open under.
-private struct AnchorView: NSViewRepresentable {
+/// The button's place on screen, for the menu to open under. MenuButton uses it too.
+struct AnchorView: NSViewRepresentable {
     final class Box { weak var view: NSView? }
     let box: Box
 
