@@ -418,7 +418,8 @@ private struct SidebarRowStyle: ButtonStyle {
 }
 
 /// Turning reading off from the window, on every page: Turn reading off opens the menu bar's
-/// three lengths, and while it's off the card says until when, with Turn on. The owner picked
+/// three lengths, and while it's off the card says so (and until when, for a timed off), with
+/// Turn on. The owner picked
 /// this from a prototype on 2026-11-27 over a row at the top of Home, the action in Home's
 /// section headers, and a bare button in the corner. It's the window's off notice, so Home has
 /// none of its own (off is easy to forget, and then Readback looks broken). Headed "Read replies
