@@ -8,6 +8,14 @@ final class Replies: ObservableObject {
     @Published private(set) var queue: ReplyQueue
     /// Whether the player shows its list of replies.
     @Published var showingList = false
+
+    /// A thread just muted from the player: the player says so, with Unmute, for its usual few
+    /// seconds (owner's mockup, 2026-11-26). Cleared when another reply starts or the player closes.
+    struct MutedNotice: Equatable {
+        let thread: String
+        let project: String
+    }
+    @Published var mutedNotice: MutedNotice?
     /// Why the last save failed, until one works again. The history on screen is then ahead of
     /// the one on disk, and History says so.
     @Published private(set) var saveError: String?

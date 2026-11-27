@@ -38,12 +38,24 @@ public struct SessionSummary: Identifiable, Equatable {
     /// The session a reply belongs to, as Home groups it: its `session`, or folder and tool when
     /// it has none. History's filter uses the same key, so "See all" finds the same replies.
     public static func key(of reply: Reply) -> String {
-        if let session = reply.session, !session.isEmpty { return session }
-        return "cwd:\(reply.cwd ?? "")|\(reply.source ?? "")"
+        key(session: reply.session, cwd: reply.cwd, source: reply.source)
+    }
+
+    /// The same key from a reply's parts, for one still on its way in (a SpeakRequest). Muting a
+    /// thread uses it too, so a muted thread is the same row Home shows.
+    public static func key(session: String?, cwd: String?, source: String?) -> String {
+        if let session, !session.isEmpty { return session }
+        return "cwd:\(cwd ?? "")|\(source ?? "")"
+    }
+
+    /// The row's name from a reply's parts: the last part of its folder, or its tool's name. The
+    /// player names the thread it mutes with it.
+    public static func project(cwd: String?, source: String?) -> String {
+        let folder = (cwd ?? "").split(separator: "/").last.map(String.init) ?? ""
+        return folder.isEmpty ? (source.flatMap(Tool.init(source:))?.name ?? "Agent") : folder
     }
 
     private static func project(of reply: Reply) -> String {
-        let folder = (reply.cwd ?? "").split(separator: "/").last.map(String.init) ?? ""
-        return folder.isEmpty ? (reply.source.flatMap(Tool.init(source:))?.name ?? "Agent") : folder
+        project(cwd: reply.cwd, source: reply.source)
     }
 }

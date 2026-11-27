@@ -23,6 +23,9 @@ struct HomePage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.xl) {
+                if prefs.readingOffUntil != nil {
+                    ReadingOffBanner(prefs: prefs) { app.turnReadingOn() }
+                }
                 NowCard(app: app, reader: reader, replies: replies)
                 EveryReplyRow(prefs: prefs)
                 VStack(alignment: .leading, spacing: Spacing.s) {

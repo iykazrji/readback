@@ -11,12 +11,17 @@ public struct ReplyQueue: Equatable {
         /// nil: not a reply from the history (a voice sample).
         public var replyID: UUID?
         public var session: String?
+        /// The reply's thread (SessionSummary key), taken when the reading started, so a mute
+        /// still finds it after History was cleared. Defaults to `session`, which is the key
+        /// whenever there is one.
+        public var thread: String?
         /// Preparing, playing or paused. False once it finished and only sits in the player.
         public var isSpeaking: Bool
 
-        public init(replyID: UUID?, session: String?, isSpeaking: Bool) {
+        public init(replyID: UUID?, session: String?, thread: String? = nil, isSpeaking: Bool) {
             self.replyID = replyID
             self.session = session
+            self.thread = thread ?? session
             self.isSpeaking = isSpeaking
         }
     }
@@ -135,6 +140,16 @@ public struct ReplyQueue: Equatable {
     public mutating func readingFailed(_ id: UUID) {
         if history.reply(id)?.state == .played { history.mark(id, .kept) }
         if history.beingRead == id { history.beingRead = nil }
+    }
+
+    /// A thread was muted (SessionSummary key): its waiting replies are kept, and if it's the one
+    /// being read, that stops and the next thread's reply carries on. Unlike `stop(session:)`,
+    /// this matches by thread, so a reply with no session id (its folder's thread) goes quiet too.
+    /// The reading's thread comes with the reading, since History's Clear can drop its reply.
+    public mutating func mute(thread: String, reading: Reading?) -> Step {
+        history.markAll(where: { $0.state == .waiting && SessionSummary.key(of: $0) == thread }, .kept)
+        guard let reading, reading.replyID != nil, reading.thread == thread else { return .nothing }
+        return .stopThenNext
     }
 
     /// Close, Esc, the menu's Stop: quiet. What was waiting stays in the history, unplayed.

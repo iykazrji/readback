@@ -43,9 +43,13 @@ Before Readback changes one of those files it keeps the old version beside it, n
 
 Connecting a tool switches on reading every reply from it out loud. To stop that, switch the tool off in **Reading** under "Read every reply out loud". If you'd switched a tool off before, connecting it again leaves it off.
 
-With it off, there are quieter ways:
+**One session too chatty?** Mute just that one. While it's reading, click the speaker button in the player. Or click the speaker button on its row on Home, or type `/readback:speak off` in a Claude Code session (`/speak off` in a Codex chat; OpenCode has no command, so use the buttons). Its replies still show up in History. Unmute it with the speaker button on its row on Home, **Unmute** in the player's note, or `/readback:speak on`. A new session starts unmuted.
 
-- In a Claude Code session, type `/readback:speak on`. Only that session is read. `/readback:speak off` stops it, and `/readback:read` reads the last reply right away. In a Codex chat the same commands are `/speak on`, `/speak off` and `/read`. Readback answers them itself in both tools, so they never cost you a model reply.
+**Need quiet for a while?** Click the menu bar icon, then **Turn reading off**: for 1 hour, until 8 AM, or until you turn it back on. The icon gets a slash while it's off, and Home says so too. **Turn reading on** in the same menu, or **Turn on** on Home, brings it back.
+
+Muted or off, you can still ask for a reply:
+
+- In a Claude Code session, `/readback:read` reads the last reply right away. With "Read every reply" off, `/readback:speak on` reads just that session. In a Codex chat the commands are `/speak on`, `/speak off` and `/read`. Readback answers them itself in both tools, so they never cost you a model reply.
 - From the menu bar icon, **Read last reply** reads the most recent reply from any connected tool.
 
 The player: **Close** or **Esc** stops it. Sending a new message in the same session stops it too. Drag the player anywhere; it remembers where you put it. A reply that starts reading by itself plays a short **Pop** first and the voice follows a second later, so it doesn't catch you off guard; pick another sound, or none, in Reading → "Sound before reading".

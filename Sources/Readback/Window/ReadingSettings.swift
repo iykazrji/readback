@@ -7,11 +7,29 @@ struct ReadingSettings: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var reader: Reader
     let resetPosition: () -> Void
+    /// Reading on, or off until switched back on (AppDelegate: stops what's reading, swaps the icon).
+    let setReading: (Bool) -> Void
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
     var body: some View {
         Form {
+            // The overall switch, the same one as the menu bar's (owner's mockup, 2026-11-26).
+            // Switching it off here means until it's switched back on; the menu bar has the timed ones.
+            Section {
+                Toggle(isOn: Binding(get: { prefs.readingOffUntil == nil }, set: { setReading($0) })) {
+                    Text("Read replies out loud")
+                    if let until = prefs.readingOffUntil {
+                        Text(ReadingOff.status(until: until, now: Date()).replacingOccurrences(of: "Reading is off", with: "Off"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityLabel("Read replies out loud")
+            } footer: {
+                FormNote("Off stops everything that reads by itself, for every tool and thread. Replies still go to History, and asking for one still plays it. The menu bar icon can also turn it off for an hour or until 8 AM.")
+            }
+
             Section {
                 ForEach(Tool.allCases) { tool in
                     Toggle(tool.name, isOn: Binding(
@@ -23,8 +41,11 @@ struct ReadingSettings: View {
             } header: {
                 Text("Read every reply out loud")
             } footer: {
-                FormNote("Connecting a tool switches this on, unless you'd set it before. With it off, /readback:speak on reads one session, /readback:read reads the last reply, and Read last reply in the menu bar still works.")
+                FormNote("Connecting a tool switches this on, unless you'd set it before. /readback:speak off mutes one session, /readback:speak on reads one, and /readback:read reads the last reply. Muted sessions show on Home.")
             }
+            // Kept as they are while reading is off, and dimmed: turning reading on restores them.
+            .disabled(prefs.readingOffUntil != nil)
+            .opacity(prefs.readingOffUntil == nil ? 1 : 0.5)
 
             Section {
                 LabeledContent("Sound before reading") {

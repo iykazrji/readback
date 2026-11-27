@@ -204,7 +204,9 @@ case "hook":
     // Running: hand it over (it's kept for "Read last reply" even when it isn't read).
     // Not running: only start Readback when this reply is meant to be read, so quitting
     // Readback isn't undone by the next reply in some other session.
-    if isUp() || ReadingSwitches.forCLI()?.wantsReading(tool: source, session: reply.session) == true {
+    // A muted thread or reading switched off counts as not meant to be read (ReadingSwitches).
+    let thread = SessionSummary.key(session: reply.session, cwd: reply.cwd, source: reply.source)
+    if isUp() || ReadingSwitches.forCLI()?.wantsReading(tool: source, thread: thread) == true {
         _ = speak(reply)
     }
 

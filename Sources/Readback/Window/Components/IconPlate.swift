@@ -6,12 +6,15 @@ struct IconPlate: View {
     let symbol: String
     let help: String
     let small: Bool
+    /// Drawn as the one solid plate, like a switch that's on: a thread's mute while it's muted.
+    let on: Bool
     let action: () -> Void
 
-    init(_ symbol: String, help: String, small: Bool = true, action: @escaping () -> Void) {
+    init(_ symbol: String, help: String, small: Bool = true, on: Bool = false, action: @escaping () -> Void) {
         self.symbol = symbol
         self.help = help
         self.small = small
+        self.on = on
         self.action = action
     }
 
@@ -21,7 +24,7 @@ struct IconPlate: View {
                 .font(.system(size: small ? 12 : 14, weight: .semibold))
         }
         .buttonStyle(PlateStyle(size: small ? ControlMetrics.smallHeight : ControlMetrics.height,
-                                radius: small ? ControlMetrics.smallRadius : ControlMetrics.radius))
+                                radius: small ? ControlMetrics.smallRadius : ControlMetrics.radius, on: on))
         .focusEffectDisabled()   // the plate draws its own neutral keyboard ring
         .help(help)
         .accessibilityLabel(help)
@@ -30,15 +33,17 @@ struct IconPlate: View {
     private struct PlateStyle: ButtonStyle {
         let size: CGFloat
         let radius: CGFloat
+        let on: Bool
 
         func makeBody(configuration: Configuration) -> some View {
-            Plate(size: size, radius: radius, configuration: configuration)
+            Plate(size: size, radius: radius, on: on, configuration: configuration)
         }
     }
 
     private struct Plate: View {
         let size: CGFloat
         let radius: CGFloat
+        let on: Bool
         let configuration: ButtonStyleConfiguration
         @State private var hovering = false
         @Environment(\.isEnabled) private var isEnabled
@@ -49,11 +54,12 @@ struct IconPlate: View {
         var body: some View {
             let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
             configuration.label
-                .foregroundStyle(.primary)
+                .foregroundStyle(on ? ControlMetrics.primaryText(scheme) : .primary)
                 .frame(width: size, height: size)
-                .background(configuration.isPressed ? ControlMetrics.pressFill(scheme)
+                .background(on ? ControlMetrics.primaryFill(scheme)
+                            : configuration.isPressed ? ControlMetrics.pressFill(scheme)
                             : hovering ? ControlMetrics.hoverFill(scheme) : ControlMetrics.fill(scheme), in: shape)
-                .overlay { Hairline(shape, hovering ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme)) }
+                .overlay { if !on { Hairline(shape, hovering ? ControlMetrics.hoverEdge(scheme) : ControlMetrics.edge(scheme)) } }
                 .keyboardFocusRing(isFocused, shape)
                 .contentShape(shape)
                 .opacity(isEnabled ? 1 : 0.4)

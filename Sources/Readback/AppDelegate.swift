@@ -29,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var mainWindow: MainWindowController?
     private var server: ControlServer?
     private var statusItem: NSStatusItem?
+    /// Fires when a timed "reading off" ends, to put the menu bar icon back.
+    private var readingBackOn: Timer?
+    /// Waking from sleep and clock or time zone changes: `readingBackOn` doesn't count time asleep.
+    private var clockObservers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
     private var advanceTask: Task<Void, Never>?
     /// Stops the voice engine after `idleStopAfter` with nothing read, to free its memory.
@@ -63,6 +67,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel = PlayerPanelController(app: self)
         setUpMainMenu()
         setUpStatusMenu()
+        // A timed off that ended while Readback wasn't running is simply over; one still going
+        // gets its timer back.
+        readingSwitchChanged()
+        observeClock()
         startControlServer()
         connections.refreshPlugin()
         Log.info("Readback \(Bundle.main.version) started")
@@ -263,7 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// What the reader is on, as the queue sees it.
     private var reading: ReplyQueue.Reading? {
-        reader.isActive ? .init(replyID: reader.replyID, session: reader.owner, isSpeaking: reader.isSpeaking) : nil
+        reader.isActive ? .init(replyID: reader.replyID, session: reader.owner, thread: reader.thread?.key, isSpeaking: reader.isSpeaking) : nil
     }
 
     /// Whether this reading's audio has been heard yet: it counts once in the all-time numbers,
@@ -362,6 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Close, Esc or the menu's Stop.
     func stopEverything() {
+        replies.mutedNotice = nil
         carryOut(replies.decide { $0.stopAll() })
     }
 
@@ -394,7 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !SpeechText.isSpeakable(speak.text) {
                 Log.info("a reply from \(speak.tool?.name ?? "a reply without a tool") had nothing to read; kept, not played")
             }
-            let switchedOn = prefs.switches.wantsReading(tool: speak.tool, session: speak.session)
+            let thread = SessionSummary.key(session: speak.session, cwd: speak.cwd, source: speak.source)
+            let switchedOn = prefs.switches.wantsReading(tool: speak.tool, thread: thread)
             carryOut(replies.decide { [reading] in $0.received(speak, switchedOn: switchedOn, reading: reading, cutIn: prefs.switchToNewReplies) })
             return HTTPResponse.json(202, ["accepted": true])
         case .stop(let session, let newTurn):
@@ -413,7 +423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return HTTPResponse.json(200, ["played": false])
         case .session(let body):
             if let enabled = body.enabled { setSession(body.session, enabled) }
-            return HTTPResponse.json(200, ["session": body.session, "enabled": prefs.isSessionOn(body.session)])
+            return HTTPResponse.json(200, ["session": body.session, "enabled": prefs.switches.isSessionOnAndUnmuted(body.session)])
         case .auto(let body):
             if let enabled = body.enabled { prefs.setReadsEveryReply(body.tool, enabled) }
             return HTTPResponse.json(200, ["tool": body.tool.rawValue, "enabled": prefs.readsEveryReply(body.tool)])
@@ -437,10 +447,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Switching a session off also stops what it's reading.
+    /// /speak off (or `readback session <id> off`) mutes the thread, and stops what it's reading.
     private func setSession(_ id: String, _ on: Bool) {
         prefs.setSession(id, on)
-        if !on { carryOut(replies.decide { [reading] in $0.stop(session: id, reading: reading) }) }
+        // The thread's own command now says how it stands, so the player's note about an earlier
+        // mute (and its Unmute, an undo of that one) no longer holds (review round 3, 2026-11-26).
+        if replies.mutedNotice?.thread == id { replies.mutedNotice = nil }
+        threadMuteChanged(id, muted: !on)
+    }
+
+    // MARK: Muting a thread, switching reading off
+
+    /// Home's and the player's mute: a muted thread's reading stops, its waiting replies stay in
+    /// History, and the next thread's reply carries on.
+    func setMuted(_ thread: String, _ muted: Bool) {
+        prefs.setMuted(thread, muted)
+        threadMuteChanged(thread, muted: muted)
+    }
+
+    /// Muted: stop its reading. Unmuted by any way in (Home, the note, /speak on): the player's
+    /// "Muted …" note about it no longer holds, so it goes.
+    private func threadMuteChanged(_ thread: String, muted: Bool) {
+        if muted {
+            carryOut(replies.decide { [reading] in $0.mute(thread: thread, reading: reading) })
+        } else if replies.mutedNotice?.thread == thread {
+            replies.mutedNotice = nil
+        }
+    }
+
+    /// The player's mute: the thread of the reply being read, and the player says it's muted with
+    /// a way back for its usual few seconds.
+    func muteCurrentThread() {
+        guard reader.isActive, let thread = reader.thread, !prefs.isMuted(thread.key) else { return }
+        replies.mutedNotice = Replies.MutedNotice(thread: thread.key, project: thread.name)
+        setMuted(thread.key, true)
+    }
+
+    /// Off until `until` (`Date.distantFuture`: until turned back on). What's reading stops and
+    /// what's waiting stays in History, as with Stop.
+    func turnReadingOff(until: Date) {
+        prefs.setReadingOff(until: until)
+        stopEverything()
+        readingSwitchChanged()
+    }
+
+    func turnReadingOn() {
+        prefs.setReadingOff(until: nil)
+        readingSwitchChanged()
+    }
+
+    /// Brings the menu bar icon in line, and wakes up when a timed off ends so it goes back too.
+    /// The switch itself needs no timer: ReadingSwitches compares the time on every reply. A timer
+    /// doesn't count time asleep, so waking and clock changes call this too (observeClock).
+    func readingSwitchChanged() {
+        readingBackOn?.invalidate()
+        readingBackOn = nil
+        prefs.switches.forgetEndedOff()
+        prefs.reloadReadingSwitches()
+        statusItem?.button?.image = prefs.isReadingOff ? Self.menuBarIconOff : Self.menuBarIcon
+        if let until = prefs.readingOffUntil, until < .distantFuture {
+            let timer = Timer(fire: until.addingTimeInterval(1), interval: 0, repeats: false) { [weak self] _ in
+                Task { @MainActor in self?.readingSwitchChanged() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            readingBackOn = timer
+        }
+    }
+
+    /// A Timer runs on a clock that stops while the Mac sleeps, so one set for 9 AM fires late
+    /// after a night asleep (Apple DTS on the developer forums, threads 106199 and 677029). Waking
+    /// and clock or time zone changes check the switch again instead (review round 1, 2026-11-26).
+    private func observeClock() {
+        let recheck: @Sendable (Notification) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated { self?.readingSwitchChanged() }
+        }
+        clockObservers = [
+            NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main, using: recheck),
+            NotificationCenter.default.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main, using: recheck),
+            NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main, using: recheck),
+        ]
     }
 
     /// /speak and /read typed in a tool: Claude Code's mod and Codex's prompt hook both show this.
@@ -449,8 +534,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .speak:
             let session = command.session ?? ""
             if let enabled = command.enabled { setSession(session, enabled) }
-            return CommandAnswer.speak(asked: command.enabled, isOn: prefs.isSessionOn(session),
-                                       everyReply: prefs.readsEveryReply(command.tool), tool: command.tool)
+            let thread: CommandAnswer.Thread = prefs.isMuted(session) ? .muted : prefs.isSessionOn(session) ? .on : .asItsTool
+            return CommandAnswer.speak(asked: command.enabled, thread: thread, everyReply: prefs.readsEveryReply(command.tool),
+                                       readingOffUntil: prefs.switches.readingOff(), tool: command.tool)
         case .read:
             let asSent = command.text.map { SpeakRequest(text: $0, source: command.tool.rawValue, cwd: command.cwd, session: command.session) }
             let step = replies.decide { $0.readLast(session: command.session, asSent: asSent) }
@@ -597,31 +683,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return NSImage(systemSymbolName: "waveform", accessibilityDescription: "Readback")
     }
 
+    /// The mark while reading is off: dimmed, with a slash cut through it, so a glance at the menu
+    /// bar says why nothing reads (owner's mockup, 2026-11-26). A template too, tinted by macOS.
+    private static var menuBarIconOff: NSImage? {
+        guard let base = menuBarIcon else { return nil }
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.4)
+            let slash = NSBezierPath()
+            slash.move(to: NSPoint(x: 2.5, y: 2.5))
+            slash.line(to: NSPoint(x: 15.5, y: 15.5))
+            slash.lineCapStyle = .round
+            // A clear gap either side, so the slash reads against the shape at this size.
+            NSGraphicsContext.current?.compositingOperation = .destinationOut
+            slash.lineWidth = 3.6
+            slash.stroke()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            NSColor.black.setStroke()
+            slash.lineWidth = 1.6
+            slash.stroke()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Readback, reading off"
+        return image
+    }
+
     private func setUpStatusMenu() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = Self.menuBarIcon
+        item.button?.image = prefs.isReadingOff ? Self.menuBarIconOff : Self.menuBarIcon
         let menu = NSMenu()
         menu.delegate = self
         // menuNeedsUpdate sets each item's state; automatic enabling would override it
         // (it enables anything whose action is reachable, so Stop showed while nothing played).
         menu.autoenablesItems = false
+        item.menu = menu
+        statusItem = item
+        fillStatusMenu(menu)
+    }
+
+    /// Built each time it opens: what it offers depends on whether reading is off right now.
+    private func fillStatusMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let now = Date()
+        let off = prefs.switches.readingOff(now: now)
+        if let off {
+            let status = NSMenuItem(title: ReadingOff.status(until: off, now: now), action: nil, keyEquivalent: "")
+            status.isEnabled = false
+            menu.addItem(status)
+            menu.addItem(NSMenuItem(title: "Turn reading on", action: #selector(turnOnFromMenu), keyEquivalent: "").withTarget(self))
+            menu.addItem(.separator())
+        }
+        replayItem.isEnabled = replies.newest != nil
+        stopItem.isEnabled = reader.isActive
         for entry in [replayItem, stopItem] { entry.target = self; menu.addItem(entry) }
         menu.addItem(.separator())
+        if off == nil {
+            let item = NSMenuItem(title: "Turn reading off", action: nil, keyEquivalent: "")
+            let choices = NSMenu()
+            choices.addItem(NSMenuItem(title: "For 1 hour", action: #selector(offForAnHour), keyEquivalent: "").withTarget(self))
+            choices.addItem(NSMenuItem(title: ReadingOff.morningLabel(now: now), action: #selector(offUntilMorning), keyEquivalent: "").withTarget(self))
+            choices.addItem(NSMenuItem(title: "Until I turn it back on", action: #selector(offUntilTurnedOn), keyEquivalent: "").withTarget(self))
+            item.submenu = choices
+            menu.addItem(item)
+            menu.addItem(.separator())
+        }
         menu.addItem(NSMenuItem(title: "History", action: #selector(openHistory), keyEquivalent: "").withTarget(self))
         menu.addItem(NSMenuItem(title: "Open Readback", action: #selector(openFromMenu), keyEquivalent: "o").withTarget(self))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Readback", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        item.menu = menu
-        statusItem = item
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        replayItem.isEnabled = replies.newest != nil
-        stopItem.isEnabled = reader.isActive
+        guard menu === statusItem?.menu else { return }
+        fillStatusMenu(menu)
     }
 
     @objc private func replay() { if let newest = replies.newest { play(newest) } }
     @objc private func stopFromMenu() { stopEverything() }
+    @objc private func offForAnHour() { turnReadingOff(until: ReadingOff.forAnHour(from: Date())) }
+    @objc private func offUntilMorning() { turnReadingOff(until: ReadingOff.nextMorning(after: Date())) }
+    @objc private func offUntilTurnedOn() { turnReadingOff(until: .distantFuture) }
+    @objc private func turnOnFromMenu() { turnReadingOn() }
 }
 
 extension NSMenuItem {

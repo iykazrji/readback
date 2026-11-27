@@ -19,6 +19,8 @@ final class PlayerPanelController {
     private let escape = EscapeHotKey()
     private var cancellables: Set<AnyCancellable> = []
     private var hideTimer: Timer?
+    /// Ends the "Muted …" note after the player's usual few seconds.
+    private var noticeTimer: Timer?
     private var hovering = false
     private var dragStart: (mouse: NSPoint, origin: NSPoint)?
 
@@ -45,6 +47,11 @@ final class PlayerPanelController {
             onClose: { [weak app] in app?.stopEverything() },
             onCancelDownload: { [weak app] model in app?.cancelDownload(model) },
             openVoices: { [weak app] in app?.openWindow(.voices) },
+            onMuteThread: { [weak app] in app?.muteCurrentThread() },
+            onUnmute: { [weak app] thread in
+                app?.setMuted(thread, false)
+                app?.replies.mutedNotice = nil
+            },
             onPlay: { [weak app] reply in app?.play(reply) },
             onHover: { [weak self] in self?.hoverChanged($0) },
             onDrag: { [weak self] translation, ended in self?.dragged(translation, ended: ended) }
@@ -75,7 +82,10 @@ final class PlayerPanelController {
             .dropFirst()
             .removeDuplicates()
             .sink { [weak self] seconds in
-                guard let self, self.reader.phase == .finished else { return }
+                guard let self else { return }
+                // The muted note's own few seconds follow the new setting too.
+                if let notice = self.replies.mutedNotice { self.mutedNoticeChanged(notice, hideAfter: seconds) }
+                guard self.reader.phase == .finished else { return }
                 self.scheduleHide(after: seconds)
             }
             .store(in: &cancellables)
@@ -87,18 +97,54 @@ final class PlayerPanelController {
                 DispatchQueue.main.async { self?.listToggled(showing) }
             }
             .store(in: &cancellables)
+        replies.$mutedNotice
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] notice in
+                DispatchQueue.main.async { self?.mutedNoticeChanged(notice) }
+            }
+            .store(in: &cancellables)
     }
 
     private func phaseChanged(_ phase: Reader.Phase) {
         hideTimer?.invalidate()
         switch phase {
         case .idle:
-            if !replies.showingList { hide() }
+            // Muting from the player stops the reading; the player stays to say so.
+            if !replies.showingList && replies.mutedNotice == nil { hide() }
         case .finished:
             show()
             scheduleHide()
         default:
+            // Another reply started: it takes the player's place over the muted note.
+            if replies.mutedNotice != nil { replies.mutedNotice = nil }
             show()
+        }
+    }
+
+    /// "Muted <thread>. Unmute": shown for the player's usual few seconds (at least three, so
+    /// there's time to read it and reach Unmute), or until closed when the player stays open.
+    /// `hideAfter`: the setting as just changed (it arrives before `prefs` has it).
+    private func mutedNoticeChanged(_ notice: Replies.MutedNotice?, hideAfter: Double? = nil) {
+        noticeTimer?.invalidate()
+        guard notice != nil else {
+            resizeToFit()
+            if !shouldBeShowing { hide() }
+            return
+        }
+        show()
+        resizeToFit()
+        let seconds = hideAfter ?? prefs.hideAfter
+        guard seconds > 0 else { return }   // 0: stays until closed
+        noticeTimer = Timer.scheduledTimer(withTimeInterval: max(seconds, 3), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.replies.mutedNotice == notice else { return }
+                if self.hovering && self.panel.isVisible && self.panel.isOnActiveSpace {
+                    self.mutedNoticeChanged(notice)   // they're reaching for Unmute: wait
+                } else {
+                    self.replies.mutedNotice = nil
+                }
+            }
         }
     }
 
@@ -108,7 +154,8 @@ final class PlayerPanelController {
             resizeToFit()
         } else {
             resizeToFit()
-            if !reader.isActive { hide() }
+            // The muted note keeps it up: hiding now would leave it faded out but still there.
+            if !reader.isActive && replies.mutedNotice == nil { hide() }
             if reader.phase == .finished { scheduleHide() }
         }
     }
@@ -134,7 +181,7 @@ final class PlayerPanelController {
     /// True while the player has a reason to be on screen: reading, just finished (before its
     /// own hide), or the reply list open.
     private var shouldBeShowing: Bool {
-        reader.isActive || reader.phase == .finished || replies.showingList
+        reader.isActive || reader.phase == .finished || replies.showingList || replies.mutedNotice != nil
     }
 
     private func show() {
@@ -231,7 +278,7 @@ final class PlayerPanelController {
         }, completionHandler: { [weak self] in
             MainActor.assumeIsolated {
                 // A new reading started during the fade: stay.
-                guard let self, !self.reader.isActive, !self.replies.showingList else { return }
+                guard let self, !self.reader.isActive, !self.replies.showingList, self.replies.mutedNotice == nil else { return }
                 self.panel.orderOut(nil)
                 self.hovering = false
             }
