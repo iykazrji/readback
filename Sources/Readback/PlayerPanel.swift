@@ -82,7 +82,10 @@ final class PlayerPanelController {
             .dropFirst()
             .removeDuplicates()
             .sink { [weak self] seconds in
-                guard let self, self.reader.phase == .finished else { return }
+                guard let self else { return }
+                // The muted note's own few seconds follow the new setting too.
+                if let notice = self.replies.mutedNotice { self.mutedNoticeChanged(notice, hideAfter: seconds) }
+                guard self.reader.phase == .finished else { return }
                 self.scheduleHide(after: seconds)
             }
             .store(in: &cancellables)
@@ -121,7 +124,8 @@ final class PlayerPanelController {
 
     /// "Muted <thread>. Unmute": shown for the player's usual few seconds (at least three, so
     /// there's time to read it and reach Unmute), or until closed when the player stays open.
-    private func mutedNoticeChanged(_ notice: Replies.MutedNotice?) {
+    /// `hideAfter`: the setting as just changed (it arrives before `prefs` has it).
+    private func mutedNoticeChanged(_ notice: Replies.MutedNotice?, hideAfter: Double? = nil) {
         noticeTimer?.invalidate()
         guard notice != nil else {
             resizeToFit()
@@ -130,8 +134,9 @@ final class PlayerPanelController {
         }
         show()
         resizeToFit()
-        guard prefs.hideAfter > 0 else { return }
-        noticeTimer = Timer.scheduledTimer(withTimeInterval: max(prefs.hideAfter, 3), repeats: false) { [weak self] _ in
+        let seconds = hideAfter ?? prefs.hideAfter
+        guard seconds > 0 else { return }   // 0: stays until closed
+        noticeTimer = Timer.scheduledTimer(withTimeInterval: max(seconds, 3), repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.replies.mutedNotice == notice else { return }
                 if self.hovering && self.panel.isVisible && self.panel.isOnActiveSpace {
@@ -149,7 +154,8 @@ final class PlayerPanelController {
             resizeToFit()
         } else {
             resizeToFit()
-            if !reader.isActive { hide() }
+            // The muted note keeps it up: hiding now would leave it faded out but still there.
+            if !reader.isActive && replies.mutedNotice == nil { hide() }
             if reader.phase == .finished { scheduleHide() }
         }
     }

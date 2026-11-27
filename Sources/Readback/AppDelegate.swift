@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     /// Fires when a timed "reading off" ends, to put the menu bar icon back.
     private var readingBackOn: Timer?
+    /// Waking from sleep and clock or time zone changes: `readingBackOn` doesn't count time asleep.
+    private var clockObservers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
     private var advanceTask: Task<Void, Never>?
     /// Stops the voice engine after `idleStopAfter` with nothing read, to free its memory.
@@ -68,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A timed off that ended while Readback wasn't running is simply over; one still going
         // gets its timer back.
         readingSwitchChanged()
+        observeClock()
         startControlServer()
         connections.refreshPlugin()
         Log.info("Readback \(Bundle.main.version) started")
@@ -268,7 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// What the reader is on, as the queue sees it.
     private var reading: ReplyQueue.Reading? {
-        reader.isActive ? .init(replyID: reader.replyID, session: reader.owner, isSpeaking: reader.isSpeaking) : nil
+        reader.isActive ? .init(replyID: reader.replyID, session: reader.owner, thread: reader.thread?.key, isSpeaking: reader.isSpeaking) : nil
     }
 
     /// Whether this reading's audio has been heard yet: it counts once in the all-time numbers,
@@ -447,7 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// /speak off (or `readback session <id> off`) mutes the thread, and stops what it's reading.
     private func setSession(_ id: String, _ on: Bool) {
         prefs.setSession(id, on)
-        if !on { carryOut(replies.decide { [reading] in $0.mute(thread: id, reading: reading) }) }
+        threadMuteChanged(id, muted: !on)
     }
 
     // MARK: Muting a thread, switching reading off
@@ -456,17 +459,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// History, and the next thread's reply carries on.
     func setMuted(_ thread: String, _ muted: Bool) {
         prefs.setMuted(thread, muted)
-        if muted { carryOut(replies.decide { [reading] in $0.mute(thread: thread, reading: reading) }) }
+        threadMuteChanged(thread, muted: muted)
+    }
+
+    /// Muted: stop its reading. Unmuted by any way in (Home, the note, /speak on): the player's
+    /// "Muted …" note about it no longer holds, so it goes.
+    private func threadMuteChanged(_ thread: String, muted: Bool) {
+        if muted {
+            carryOut(replies.decide { [reading] in $0.mute(thread: thread, reading: reading) })
+        } else if replies.mutedNotice?.thread == thread {
+            replies.mutedNotice = nil
+        }
     }
 
     /// The player's mute: the thread of the reply being read, and the player says it's muted with
     /// a way back for its usual few seconds.
     func muteCurrentThread() {
-        guard let id = reader.replyID, let reply = replies.all.first(where: { $0.id == id }) else { return }
-        let thread = SessionSummary.key(of: reply)
-        let project = SessionSummary.sessions(from: [reply], limit: 1).first?.project ?? "this thread"
-        replies.mutedNotice = Replies.MutedNotice(thread: thread, project: project)
-        setMuted(thread, true)
+        guard reader.isActive, let thread = reader.thread else { return }
+        replies.mutedNotice = Replies.MutedNotice(thread: thread.key, project: thread.name)
+        setMuted(thread.key, true)
     }
 
     /// Off until `until` (`Date.distantFuture`: until turned back on). What's reading stops and
@@ -483,10 +494,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Brings the menu bar icon in line, and wakes up when a timed off ends so it goes back too.
-    /// The switch itself needs no timer: ReadingSwitches compares the time on every reply.
+    /// The switch itself needs no timer: ReadingSwitches compares the time on every reply. A timer
+    /// doesn't count time asleep, so waking and clock changes call this too (observeClock).
     func readingSwitchChanged() {
         readingBackOn?.invalidate()
         readingBackOn = nil
+        prefs.switches.forgetEndedOff()
         prefs.reloadReadingSwitches()
         statusItem?.button?.image = prefs.isReadingOff ? Self.menuBarIconOff : Self.menuBarIcon
         if let until = prefs.readingOffUntil, until < .distantFuture {
@@ -496,6 +509,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             RunLoop.main.add(timer, forMode: .common)
             readingBackOn = timer
         }
+    }
+
+    /// A Timer runs on a clock that stops while the Mac sleeps, so one set for 9 AM fires late
+    /// after a night asleep (Apple DTS on the developer forums, threads 106199 and 677029). Waking
+    /// and clock or time zone changes check the switch again instead (review round 1, 2026-11-26).
+    private func observeClock() {
+        let recheck: @Sendable (Notification) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated { self?.readingSwitchChanged() }
+        }
+        clockObservers = [
+            NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main, using: recheck),
+            NotificationCenter.default.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main, using: recheck),
+            NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main, using: recheck),
+        ]
     }
 
     /// /speak and /read typed in a tool: Claude Code's mod and Codex's prompt hook both show this.

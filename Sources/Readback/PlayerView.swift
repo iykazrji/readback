@@ -151,8 +151,8 @@ struct PlayerView: View {
     /// the person hears the flat voice is where they learn there's another (owner, 2026-11-26).
     /// The thread of the reply being read, as Home names it; nil for a voice sample or nothing.
     private var currentProject: String? {
-        guard reader.isActive, let id = reader.replyID, let reply = replies.all.first(where: { $0.id == id }) else { return nil }
-        return SessionSummary.sessions(from: [reply], limit: 1).first?.project
+        guard reader.isActive else { return nil }
+        return reader.thread?.name
     }
 
     /// "Reading with…" while it reads; once it's done and kept open, what it was read with.
@@ -685,7 +685,7 @@ private struct MutedNoteRow: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(hovering ? Theme.textActive : Theme.textActive.opacity(0.85))
                 .onHover { hovering = $0 }
-                .help("Read \(notice.project)'s replies again")
+                .help("Undo muting \(notice.project)")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)

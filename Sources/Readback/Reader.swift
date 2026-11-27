@@ -26,6 +26,9 @@ final class Reader: ObservableObject {
     @Published private(set) var owner: String?
     /// The history entry being read, so the list can mark it.
     @Published private(set) var replyID: UUID?
+    /// The thread being read (SessionSummary key) and its name as Home shows it, kept from the
+    /// start so muting it works even after History's Clear dropped the reply. nil with no reply.
+    @Published private(set) var thread: (key: String, name: String)?
     /// The model this reading's voice downloads before it speaks; nil for the macOS voice. Another
     /// model's download (one started from Voices) isn't this reading's to show or cancel.
     @Published private(set) var voiceModel: String?
@@ -83,6 +86,8 @@ final class Reader: ObservableObject {
         self.chunks = chunks
         owner = request.session
         self.replyID = replyID
+        thread = replyID == nil ? nil : (SessionSummary.key(session: request.session, cwd: request.cwd, source: request.source),
+                                         SessionSummary.project(cwd: request.cwd, source: request.source))
         title = request.title
         current = 0
         progress = 0
@@ -145,6 +150,7 @@ final class Reader: ObservableObject {
         owner = nil
         voiceModel = nil
         replyID = nil
+        thread = nil
         pendingOffset = 0
         startsPlaying = true
         phase = .idle
