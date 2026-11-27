@@ -27,7 +27,7 @@ struct ReadingSettings: View {
                 }
                 .accessibilityLabel("Read replies out loud")
             } footer: {
-                FormNote("Off stops everything that reads by itself, for every tool and thread. Replies still go to History, and asking for one still plays it. The menu bar icon can also turn it off for an hour or until tomorrow morning.")
+                FormNote("Off stops everything that reads by itself, for every tool and thread. Replies still go to History, and asking for one still plays it. The menu bar icon can also turn it off for an hour or until 8 AM.")
             }
 
             Section {
