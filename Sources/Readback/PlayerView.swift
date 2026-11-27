@@ -36,6 +36,10 @@ struct PlayerView: View {
     var onCancelDownload: (String) -> Void = { _ in }
     /// The natural-voice line's link: opens Voices, where Install says the size first.
     var openVoices: () -> Void = {}
+    /// Mutes the thread of the reply being read (AppDelegate.muteCurrentThread).
+    var onMuteThread: () -> Void = {}
+    /// The muted note's Unmute, with the thread it names.
+    var onUnmute: (String) -> Void = { _ in }
     /// Plays a reply from the list, switching away from whatever is playing.
     var onPlay: (Reply) -> Void
     var onHover: (Bool) -> Void
@@ -57,6 +61,8 @@ struct PlayerView: View {
             }
             if reader.isActive {
                 nowPlaying
+            } else if let notice = replies.mutedNotice {
+                MutedNoteRow(notice: notice) { onUnmute(notice.thread) }
             } else {
                 Text(replies.all.isEmpty ? "Replies show up here once a connected tool sends one." : "Pick a reply to hear it.")
                     .font(.system(size: 12.5))
@@ -65,7 +71,8 @@ struct PlayerView: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 12)
             }
-            ControlBar(reader: reader, replies: replies, onClose: onClose)
+            ControlBar(reader: reader, replies: replies, onClose: onClose,
+                       muteHelp: currentProject.map { "Mute \($0)" }, onMute: onMuteThread)
                 .padding(6)
         }
         .frame(width: Theme.width)
@@ -142,6 +149,12 @@ struct PlayerView: View {
 
     /// One quiet line while a reply reads in the macOS voice because the engine isn't in: where
     /// the person hears the flat voice is where they learn there's another (owner, 2026-11-26).
+    /// The thread of the reply being read, as Home names it; nil for a voice sample or nothing.
+    private var currentProject: String? {
+        guard reader.isActive, let id = reader.replyID, let reply = replies.all.first(where: { $0.id == id }) else { return nil }
+        return SessionSummary.sessions(from: [reply], limit: 1).first?.project
+    }
+
     /// "Reading with…" while it reads; once it's done and kept open, what it was read with.
     private var macOSVoiceLine: String {
         reader.isSpeaking ? "Reading with the macOS voice" : "Read with the macOS voice"
@@ -344,6 +357,9 @@ private struct ControlBar: View {
     var onClose: () -> Void
     /// Stops a voice's download (the player's Cancel while a reply waits for its voice).
     var onCancelDownload: (String) -> Void = { _ in }
+    /// "Mute readback" while a reply from a thread reads; nil hides the button (a voice sample).
+    var muteHelp: String? = nil
+    var onMute: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 2) {
@@ -360,6 +376,21 @@ private struct ControlBar: View {
             }
             .disabled(isFailed || !reader.isActive)
             .fixedSize()
+
+            // Mute the thread being heard, where it's heard (owner's mockup, 2026-11-26). A keycap
+            // like the speed chip beside it: a setting for the thread, not a transport control.
+            if let muteHelp {
+                ChipButton(help: muteHelp, action: onMute) {
+                    Image(systemName: "speaker.slash.fill")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Theme.keycapText)
+                        .frame(width: 26, height: 20)
+                        .background(Theme.keycap, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                }
+                .fixedSize()
+                .padding(.leading, 4)
+                .accessibilityLabel(muteHelp)
+            }
 
             ChipButton(help: "Playback speed", action: reader.cycleSpeed) {
                 Text(speedLabel)
@@ -630,6 +661,38 @@ private struct PressDim: ButtonStyle {
 }
 
 /// The player's Cancel for a voice download: a quiet text button that brightens under the pointer.
+/// Shown in the player's place after its thread is muted: what happened, where its replies go,
+/// and the way back (owner's mockup, 2026-11-26).
+private struct MutedNoteRow: View {
+    let notice: Replies.MutedNotice
+    let unmute: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "speaker.slash.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.nudge)
+                .accessibilityHidden(true)
+            Text("Muted \(notice.project). Its replies still go to History.")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textActive)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            Button("Unmute", action: unmute)
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(hovering ? Theme.textActive : Theme.textActive.opacity(0.85))
+                .onHover { hovering = $0 }
+                .help("Read \(notice.project)'s replies again")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// The natural-voice line's link: text and an arrow that brighten and nudge right under the pointer.
 private struct NudgeLink: View {
     let title: String

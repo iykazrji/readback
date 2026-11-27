@@ -137,6 +137,15 @@ public struct ReplyQueue: Equatable {
         if history.beingRead == id { history.beingRead = nil }
     }
 
+    /// A thread was muted (SessionSummary key): its waiting replies are kept, and if it's the one
+    /// being read, that stops and the next thread's reply carries on. Unlike `stop(session:)`,
+    /// this matches by thread, so a muted OpenCode folder (no session id) goes quiet too.
+    public mutating func mute(thread: String, reading: Reading?) -> Step {
+        history.markAll(where: { $0.state == .waiting && SessionSummary.key(of: $0) == thread }, .kept)
+        guard let id = reading?.replyID, let reply = history.reply(id), SessionSummary.key(of: reply) == thread else { return .nothing }
+        return .stopThenNext
+    }
+
     /// Close, Esc, the menu's Stop: quiet. What was waiting stays in the history, unplayed.
     public mutating func stopAll() -> Step {
         history.markAll(where: { $0.state == .waiting }, .kept)

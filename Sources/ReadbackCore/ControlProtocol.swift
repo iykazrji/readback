@@ -296,18 +296,40 @@ public enum CommandAnswer {
     /// it ran), and only reopening it brings the two back in step.
     public static let appIsOlder = "The Readback that's running is an older version than this one. Quit Readback from the menu bar and open it again."
 
-    public static func speak(asked: Bool?, isOn: Bool, everyReply: Bool, tool: Tool) -> String {
+    /// How a thread stands for /speak.
+    public enum Thread: Equatable {
+        /// /speak on: read even when the tool doesn't read every reply.
+        case on
+        /// /speak off or a mute in the app: quiet even when the tool reads every reply.
+        case muted
+        /// Neither: the tool's "read every reply" decides.
+        case asItsTool
+    }
+
+    /// /speak's answer. `/speak off` mutes the thread even when its tool reads every reply (owner,
+    /// 2026-11-26). `readingOffUntil`: when Readback's overall switch is off, when it comes back
+    /// (`Date.distantFuture`: not by itself), so turning a thread on doesn't promise what won't happen.
+    public static func speak(asked: Bool?, thread: Thread, everyReply: Bool, readingOffUntil: Date? = nil,
+                             tool: Tool, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
         let here = "this \(tool.conversation)"
-        if asked == nil, everyReply {
-            return "Read-aloud is on in \(here), because Readback reads every \(tool.name) reply. Switch that off in Readback's Reading page; \(tool.readCommand) reads the last reply."
+        let offNote: String = readingOffUntil.map { until in
+            let when = ReadingOff.describe(until: until, now: now, calendar: calendar, locale: locale).map { " until \($0)" } ?? ""
+            return " But reading is off in Readback\(when). Turn it back on from the menu bar icon."
+        } ?? ""
+        switch (asked, thread) {
+        case (false?, _):
+            return "Muted \(here). \(tool.speakCommand) on unmutes it."
+        case (true?, _):
+            return "Read-aloud is on for \(here).\(offNote)"
+        case (nil, .muted):
+            return "This \(tool.conversation) is muted. \(tool.speakCommand) on unmutes it; \(tool.readCommand) reads the last reply."
+        case (nil, .on):
+            return "Read-aloud is on in \(here). \(tool.speakCommand) off mutes it, \(tool.readCommand) reads the last reply.\(offNote)"
+        case (nil, .asItsTool) where everyReply:
+            return "Read-aloud is on here, because Readback reads every \(tool.name) reply. \(tool.speakCommand) off mutes just \(here).\(offNote)"
+        case (nil, .asItsTool):
+            return "Read-aloud is off in \(here). \(tool.speakCommand) on switches it on, \(tool.readCommand) reads the last reply."
         }
-        if asked == nil {
-            return "Read-aloud is \(isOn ? "on" : "off") in \(here). \(tool.speakCommand) on or \(tool.speakCommand) off changes it, \(tool.readCommand) reads the last reply."
-        }
-        if !isOn, everyReply {
-            return "Read-aloud is off for \(here), but Readback is set to read every \(tool.name) reply. Switch that off in Readback's Reading page."
-        }
-        return "Read-aloud is \(isOn ? "on" : "off") for \(here)."
     }
 
     public static func read(played: Bool, tool: Tool) -> String {

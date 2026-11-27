@@ -33,6 +33,11 @@ final class Preferences: ObservableObject {
     /// Read every reply from a tool, whatever its sessions say. Published here for the Reading
     /// page; saved through `switches`, which the CLI reads too.
     @Published private(set) var autoRead: [Tool: Bool]
+    /// When "read replies out loud" comes back on, while it's off (`Date.distantFuture`: when the
+    /// person turns it on). Published for Home, Reading and the menu bar; saved through `switches`.
+    @Published private(set) var readingOffUntil: Date?
+    /// The muted threads (SessionSummary keys), for Home's rows and the player.
+    @Published private(set) var muted: Set<String>
     let switches = ReadingSwitches(defaults: .standard)
 
     /// Kokoro on Apple silicon: natural and quick. Until its engine is installed, replies use the
@@ -62,6 +67,8 @@ final class Preferences: ObservableObject {
         cueSound = defaults.string(forKey: "cueSound") ?? "Pop"
         let switches = ReadingSwitches(defaults: .standard)
         autoRead = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, switches.readsEveryReply($0)) })
+        readingOffUntil = switches.readingOff()
+        muted = Set(switches.mutedThreads)
     }
 
     /// Read from the saved settings each time, not the published copy: `readback connect` can
@@ -73,6 +80,30 @@ final class Preferences: ObservableObject {
     func reloadReadingSwitches() {
         let saved = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, switches.readsEveryReply($0)) })
         if saved != autoRead { autoRead = saved }
+        let off = switches.readingOff()
+        if off != readingOffUntil { readingOffUntil = off }
+        let mutedNow = Set(switches.mutedThreads)
+        if mutedNow != muted { muted = mutedNow }
+    }
+
+    // MARK: Reading off, and muted threads
+
+    var isReadingOff: Bool { switches.readingOff() != nil }
+
+    /// Off until `until` (`Date.distantFuture`: until turned back on), or back on with nil.
+    func setReadingOff(until: Date?) {
+        switches.setReadingOff(until: until)
+        readingOffUntil = switches.readingOff()
+        Log.info(until.map { $0 == .distantFuture ? "reading switched off until turned back on" : "reading switched off until \($0)" }
+                 ?? "reading switched back on")
+    }
+
+    func isMuted(_ thread: String) -> Bool { switches.isMuted(thread) }
+
+    func setMuted(_ thread: String, _ on: Bool) {
+        switches.setMuted(thread, on)
+        muted = Set(switches.mutedThreads)
+        Log.info("a thread was \(on ? "muted" : "unmuted")")
     }
 
     func setReadsEveryReply(_ tool: Tool, _ on: Bool) {
@@ -91,9 +122,11 @@ final class Preferences: ObservableObject {
 
     func isSessionOn(_ id: String) -> Bool { switches.isSessionOn(id) }
 
+    /// /speak on or off: off mutes the thread, on lifts a mute and reads it (ReadingSwitches.setSession).
     func setSession(_ id: String, _ on: Bool) {
         switches.setSession(id, on)
-        Log.info("read-aloud \(on ? "on" : "off") for a session")
+        muted = Set(switches.mutedThreads)
+        Log.info("read-aloud \(on ? "on" : "muted") for a session")
     }
 
     // MARK: What to speak with

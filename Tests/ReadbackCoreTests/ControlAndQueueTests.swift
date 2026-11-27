@@ -84,25 +84,45 @@ final class CommandAnswerTests: XCTestCase {
     /// Claude Code's commands are /readback:speak and /readback:read (owner, 2026-11-25); Codex's
     /// stay as Codex sends them.
     func testAnswersNameEachToolsOwnCommands() {
-        XCTAssertEqual(CommandAnswer.speak(asked: nil, isOn: false, everyReply: false, tool: .claude),
-                       "Read-aloud is off in this session. /readback:speak on or /readback:speak off changes it, /readback:read reads the last reply.")
-        XCTAssertTrue(CommandAnswer.speak(asked: nil, isOn: true, everyReply: true, tool: .claude).hasSuffix("/readback:read reads the last reply."))
-        XCTAssertEqual(CommandAnswer.speak(asked: nil, isOn: false, everyReply: false, tool: .codex),
-                       "Read-aloud is off in this chat. /speak on or /speak off changes it, /read reads the last reply.")
+        XCTAssertEqual(CommandAnswer.speak(asked: nil, thread: .asItsTool, everyReply: false, tool: .claude),
+                       "Read-aloud is off in this session. /readback:speak on switches it on, /readback:read reads the last reply.")
+        XCTAssertTrue(CommandAnswer.speak(asked: nil, thread: .on, everyReply: true, tool: .claude).hasSuffix("/readback:read reads the last reply."))
+        XCTAssertEqual(CommandAnswer.speak(asked: nil, thread: .asItsTool, everyReply: false, tool: .codex),
+                       "Read-aloud is off in this chat. /speak on switches it on, /read reads the last reply.")
         XCTAssertEqual(Tool.claude.speakCommand, "/readback:speak")
         XCTAssertEqual(Tool.claude.readCommand, "/readback:read")
         XCTAssertEqual(Tool.codex.speakCommand, "/speak")
     }
 
     func testEachToolHearsItsOwnWordForAConversation() {
-        XCTAssertEqual(CommandAnswer.speak(asked: true, isOn: true, everyReply: false, tool: .claude), "Read-aloud is on for this session.")
-        XCTAssertEqual(CommandAnswer.speak(asked: false, isOn: false, everyReply: false, tool: .codex), "Read-aloud is off for this chat.")
+        XCTAssertEqual(CommandAnswer.speak(asked: true, thread: .on, everyReply: false, tool: .claude), "Read-aloud is on for this session.")
+        XCTAssertEqual(CommandAnswer.speak(asked: false, thread: .muted, everyReply: false, tool: .codex), "Muted this chat. /speak on unmutes it.")
         XCTAssertEqual(CommandAnswer.read(played: false, tool: .codex), "There's no reply in this chat to read yet.")
     }
 
-    func testEveryReplyStillOnIsSaidOutLoud() {
-        XCTAssertTrue(CommandAnswer.speak(asked: false, isOn: false, everyReply: true, tool: .claude).contains("read every Claude Code reply"))
-        XCTAssertTrue(CommandAnswer.speak(asked: nil, isOn: false, everyReply: true, tool: .claude).hasPrefix("Read-aloud is on in this session, because"))
+    /// /speak off mutes a thread even with "read every reply" on (owner, 2026-11-26).
+    func testSpeakOffMutesEvenWhenTheToolReadsEveryReply() {
+        XCTAssertEqual(CommandAnswer.speak(asked: false, thread: .muted, everyReply: true, tool: .claude),
+                       "Muted this session. /readback:speak on unmutes it.")
+        XCTAssertTrue(CommandAnswer.speak(asked: nil, thread: .asItsTool, everyReply: true, tool: .claude)
+            .hasPrefix("Read-aloud is on here, because Readback reads every Claude Code reply. /readback:speak off mutes just this session."))
+        XCTAssertEqual(CommandAnswer.speak(asked: nil, thread: .muted, everyReply: true, tool: .claude),
+                       "This session is muted. /readback:speak on unmutes it; /readback:read reads the last reply.")
+    }
+
+    /// Turning a thread on while Readback is off says that nothing plays until it's back on.
+    func testTurningAThreadOnWhileReadingIsOffSaysSo() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 26, hour: 16, minute: 12))!
+        let morning = ReadingOff.nextMorning(after: now, calendar: calendar)
+        let us = Locale(identifier: "en_US")
+        XCTAssertEqual(CommandAnswer.speak(asked: true, thread: .on, everyReply: false, readingOffUntil: morning, tool: .claude,
+                                           now: now, calendar: calendar, locale: us),
+                       "Read-aloud is on for this session. But reading is off in Readback until 8\u{202F}AM tomorrow. Turn it back on from the menu bar icon.")
+        XCTAssertEqual(CommandAnswer.speak(asked: true, thread: .on, everyReply: false, readingOffUntil: .distantFuture, tool: .codex,
+                                           now: now, calendar: calendar, locale: us),
+                       "Read-aloud is on for this chat. But reading is off in Readback. Turn it back on from the menu bar icon.")
     }
 }
 
@@ -218,14 +238,14 @@ final class ReadingSwitchesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let switches = ReadingSwitches(defaults: defaults)
 
-        XCTAssertFalse(switches.wantsReading(tool: .codex, session: "c"))
+        XCTAssertFalse(switches.wantsReading(tool: .codex, thread: "c"))
         switches.setSession("c", true)
-        XCTAssertTrue(switches.wantsReading(tool: .codex, session: "c"))
-        XCTAssertFalse(switches.wantsReading(tool: .codex, session: "other"))
+        XCTAssertTrue(switches.wantsReading(tool: .codex, thread: "c"))
+        XCTAssertFalse(switches.wantsReading(tool: .codex, thread: "other"))
         switches.setSession("c", false)
         switches.setReadsEveryReply(.codex, true)
-        XCTAssertTrue(switches.wantsReading(tool: .codex, session: nil))
-        XCTAssertFalse(switches.wantsReading(tool: .claude, session: nil))
+        XCTAssertTrue(switches.wantsReading(tool: .codex, thread: nil))
+        XCTAssertFalse(switches.wantsReading(tool: .claude, thread: nil))
         XCTAssertEqual(defaults.bool(forKey: "autoRead.codex"), true, "the key older versions and the CLI read")
     }
 }
@@ -674,7 +694,7 @@ final class ProtocolNitTests: XCTestCase {
     }
 
     func testBareSpeakSaysWhyItsOnWhenEveryReplyIs() {
-        let answer = CommandAnswer.speak(asked: nil, isOn: false, everyReply: true, tool: .codex)
+        let answer = CommandAnswer.speak(asked: nil, thread: .asItsTool, everyReply: true, tool: .codex)
         XCTAssertFalse(answer.contains("/speak off changes it"), answer)
         XCTAssertTrue(answer.contains("every Codex reply"), answer)
     }
