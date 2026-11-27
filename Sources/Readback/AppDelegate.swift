@@ -450,6 +450,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// /speak off (or `readback session <id> off`) mutes the thread, and stops what it's reading.
     private func setSession(_ id: String, _ on: Bool) {
         prefs.setSession(id, on)
+        // The thread's own command now says how it stands, so the player's note about an earlier
+        // mute (and its Unmute, an undo of that one) no longer holds (review round 3, 2026-11-26).
+        if replies.mutedNotice?.thread == id { replies.mutedNotice = nil }
         threadMuteChanged(id, muted: !on)
     }
 
