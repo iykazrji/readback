@@ -111,7 +111,11 @@ final class DropdownPresenter: ObservableObject {
     func show(_ menu: DropdownMenu, below anchor: NSRect, in parent: NSWindow, reduceMotion: Bool) {
         close()
         let size = MenuPanel.size(for: menu, minWidth: anchor.width)
-        let visible = (parent.screen ?? NSScreen.main)?.visibleFrame ?? parent.frame
+        // The button's own display, not the window's: a window across two displays reports the
+        // one holding most of it, and the sidebar's button can sit on the other (review, 2026-11-27).
+        let middle = NSPoint(x: anchor.midX, y: anchor.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(middle) } ?? parent.screen ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? parent.frame
         let gap: CGFloat = 4, margin: CGFloat = 8
         var origin = NSPoint(x: anchor.minX, y: anchor.minY - gap - size.height)
         var opensUp = false
