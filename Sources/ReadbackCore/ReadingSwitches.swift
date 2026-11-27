@@ -5,7 +5,8 @@ import Foundation
 /// a tool's "read every reply". Saved in the app's UserDefaults. The CLI reads them straight from
 /// there, so a hook never has to start the app just to ask; both go through this.
 ///
-/// A thread is a SessionSummary key: the tool's session id, or folder and tool for OpenCode.
+/// A thread is a SessionSummary key: the tool's session id (OpenCode's plugin sends one too), or
+/// folder and tool for a reply that came without one.
 public struct ReadingSwitches {
     private let defaults: UserDefaults
 
@@ -78,11 +79,11 @@ public struct ReadingSwitches {
         setList(Self.mutedKey, thread, !on)
     }
 
-    /// The app's mute button. Unmuting hands the thread back to its tool's switch rather than
-    /// switching it on: someone who unmutes a thread wants it as it was before.
+    /// The app's mute buttons. Unmuting puts the thread back as it was before the mute: on if
+    /// /speak on had it on, otherwise as its tool's switch says. A mute beats /speak on in
+    /// `wantsReading`, so muting leaves that in place for the unmute (review round 1, 2026-11-26).
     public func setMuted(_ thread: String, _ muted: Bool) {
         setList(Self.mutedKey, thread, muted)
-        if muted { setList(Self.sessionsKey, thread, false) }
     }
 
     // MARK: Everything: "read replies out loud"
@@ -97,6 +98,13 @@ public struct ReadingSwitches {
     /// Off until `until` (`Date.distantFuture` for "until I turn it back on"), or on with nil.
     public func setReadingOff(until: Date?) {
         if let until { defaults.set(until, forKey: Self.offUntilKey) } else { defaults.removeObject(forKey: Self.offUntilKey) }
+    }
+
+    /// Drops a timed off that has ended, so a clock set back can't bring it back unseen. The app
+    /// calls it whenever it brings the menu bar icon in line.
+    public func forgetEndedOff(now: Date = Date()) {
+        guard let until = defaults.object(forKey: Self.offUntilKey) as? Date, until <= now else { return }
+        defaults.removeObject(forKey: Self.offUntilKey)
     }
 
     // MARK: The answer

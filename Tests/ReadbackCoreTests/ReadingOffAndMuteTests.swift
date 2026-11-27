@@ -53,7 +53,41 @@ import Testing
         }
     }
 
-    @Test func anOpenCodeFolderIsAThreadToo() {
+    /// The player's Unmute is an undo: a thread that was on with /speak on reads again
+    /// (review round 1, 2026-11-26: muting used to drop the /speak on, so Unmute left it quiet).
+    @Test func unmutingInTheAppPutsBackASpeakOn() {
+        withSwitches { switches in
+            switches.setSession("t", true)
+            switches.setMuted("t", true)
+            #expect(!switches.wantsReading(tool: .codex, thread: "t"))
+            switches.setMuted("t", false)
+            #expect(switches.wantsReading(tool: .codex, thread: "t"))
+        }
+    }
+
+    /// OpenCode's plugin sends its session id and folder, so each OpenCode chat is its own thread,
+    /// the same row Home shows; a mute holds for that chat and not its neighbour in the folder.
+    @Test func anOpenCodeChatFromTheRealHookIsItsOwnThread() throws {
+        func reply(_ id: String) throws -> SpeakRequest {
+            let json = #"{"last_assistant_message":"Done.","session_id":"\#(id)","cwd":"/Users/me/app"}"#
+            return try #require(HookPayload.parse(Data(json.utf8))?.speakRequest(from: .opencode))
+        }
+        let first = try reply("ses_a"), second = try reply("ses_b")
+        let firstKey = SessionSummary.key(session: first.session, cwd: first.cwd, source: first.source)
+        let row = SessionSummary.sessions(from: [Reply(first, state: .kept)]).first?.id
+        #expect(firstKey == "ses_a")
+        #expect(row == firstKey)
+        #expect(SessionSummary.project(cwd: first.cwd, source: first.source) == "app")
+        #expect(SessionSummary.project(cwd: nil, source: "codex") == "Codex")
+        withSwitches { switches in
+            switches.setReadsEveryReply(.opencode, true)
+            switches.setMuted(firstKey, true)
+            #expect(!switches.wantsReading(tool: .opencode, thread: firstKey))
+            #expect(switches.wantsReading(tool: .opencode, thread: SessionSummary.key(session: second.session, cwd: second.cwd, source: second.source)))
+        }
+    }
+
+    @Test func aReplyWithoutASessionIdIsItsFoldersThread() {
         let thread = SessionSummary.key(session: nil, cwd: "/Users/me/app", source: "opencode")
         #expect(thread == SessionSummary.key(of: Reply(text: "x", source: "opencode", cwd: "/Users/me/app", session: nil, state: .kept)))
         withSwitches { switches in
@@ -64,6 +98,21 @@ import Testing
     }
 
     // MARK: Everything off
+
+    /// Once a timed off has ended it's forgotten, so setting the clock back can't bring it back
+    /// while the menu bar icon says reading is on (review round 1, 2026-11-26).
+    @Test func anEndedOffIsForgotten() {
+        withSwitches { switches in
+            switches.setReadingOff(until: at(17))
+            switches.forgetEndedOff(now: at(16))
+            #expect(switches.readingOff(now: at(16)) == at(17), "still going: kept")
+            switches.forgetEndedOff(now: at(17, 1))
+            #expect(switches.readingOff(now: at(16)) == nil, "over: gone, even with the clock set back")
+            switches.setReadingOff(until: .distantFuture)
+            switches.forgetEndedOff(now: at(17))
+            #expect(switches.readingOff(now: at(17)) == .distantFuture)
+        }
+    }
 
     @Test func offBeatsEverySwitch() {
         withSwitches { switches in
@@ -120,6 +169,37 @@ import Testing
         #expect(queue.mute(thread: "noisy", reading: reading) == .stopThenNext)
         let waiting = queue.history.replies.filter { $0.state == .waiting }
         #expect(waiting.map(\.text) == ["Other."])
+        let muted = queue.history.replies.first { $0.text == "Two." }
+        #expect(muted?.state == .kept, "kept in History, not dropped")
+        guard case .play(let next, _) = queue.playNext(reading: nil) else {
+            Issue.record("the other thread's reply didn't play next"); return
+        }
+        #expect(next.text == "Other.")
+    }
+
+    /// Clear in History drops the reply being read; muting its thread still stops it, because the
+    /// thread comes from the reading, not the history (review round 1, 2026-11-26).
+    @Test func mutingStopsTheReadingEvenAfterHistoryWasCleared() {
+        var queue = ReplyQueue()
+        guard case .play(let playing, _) = queue.received(SpeakRequest(text: "Long.", source: "claude", session: "noisy"),
+                                                          switchedOn: true, reading: nil, cutIn: false) else {
+            Issue.record("the reply didn't play"); return
+        }
+        let reading = ReplyQueue.Reading(replyID: playing.id, session: "noisy", thread: "noisy", isSpeaking: true)
+        _ = queue.history.clearForUndo()
+        #expect(queue.history.reply(playing.id) == nil)
+        #expect(queue.mute(thread: "noisy", reading: reading) == .stopThenNext)
+    }
+
+    @Test func mutingAnOpenCodeFolderStopsItsReading() {
+        var queue = ReplyQueue()
+        let request = SpeakRequest(text: "Done.", source: "opencode", cwd: "/Users/me/app")
+        guard case .play(let playing, _) = queue.received(request, switchedOn: true, reading: nil, cutIn: false) else {
+            Issue.record("the reply didn't play"); return
+        }
+        let thread = SessionSummary.key(session: nil, cwd: "/Users/me/app", source: "opencode")
+        let reading = ReplyQueue.Reading(replyID: playing.id, session: nil, thread: thread, isSpeaking: true)
+        #expect(queue.mute(thread: thread, reading: reading) == .stopThenNext)
     }
 
     @Test func mutingAnotherThreadLeavesTheReadingAlone() {
