@@ -26,6 +26,10 @@ struct EveryReplyRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .surface()
+        // While reading is off the switches keep their settings but can't do anything, so they
+        // dim (owner's mockup, 2026-11-26); turning reading on brings them back as they were.
+        .opacity(prefs.readingOffUntil == nil ? 1 : 0.5)
+        .disabled(prefs.readingOffUntil != nil)
         .keepsReadingSwitchesFresh(prefs)
     }
 

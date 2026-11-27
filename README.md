@@ -21,8 +21,9 @@ It downloads the app, connects the tools it finds, and tells you the one step on
 ## Use it
 
 - Connecting a tool switches on reading every reply from it out loud. Switch that off for a tool in Readback's **Reading** page.
-- With it off, type `/readback:speak on` in a Claude Code session to hear that session's replies, `/readback:speak off` to stop, and `/readback:read` to hear the last reply again. In a Codex chat, it's `/speak on`, `/speak off` and `/read`.
-- The menu bar icon's **Read last reply** works from anywhere.
+- To quiet one noisy session, mute it: the speaker button in the player while it reads, the one on its row on Home, or `/readback:speak off` in the session (`/speak off` in a Codex chat). `/readback:speak on` brings it back, and `/readback:read` reads the last reply again.
+- To quiet everything, use the menu bar icon's **Turn reading off**: for an hour, until 8 AM, or until you turn it back on. The icon shows a slash while it's off.
+- The menu bar icon's **Read last reply** works from anywhere, even with reading off.
 
 ## Building it
 

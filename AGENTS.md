@@ -43,7 +43,7 @@ These are the code side of PRODUCT.md's hard lines.
 
 ## Words
 
-The docs, the UI copy and the code share these names. A **reply** is one finished agent message. A **session** is one Claude Code session or Codex chat. A **tool** is Claude Code, Codex or OpenCode. A **reading** is one reply being voiced. A reply in the history is **waiting** (queued to play), **played**, or **kept** (stored, nobody asked to read it). **Session on** is `/readback:speak on` (Claude Code) or `/speak on` (Codex). **Read every reply** (`autoRead`) is a tool's always-on switch. The **engine** is the on-device mlx-audio server on 127.0.0.1:8909. A **voice** is a speaker within an engine.
+The docs, the UI copy and the code share these names. A **reply** is one finished agent message. A **session** is one Claude Code session or Codex chat. A **tool** is Claude Code, Codex or OpenCode. A **reading** is one reply being voiced. A reply in the history is **waiting** (queued to play), **played**, or **kept** (stored, nobody asked to read it). **Session on** is `/readback:speak on` (Claude Code) or `/speak on` (Codex). A **thread** is a session, or an OpenCode folder (`SessionSummary.key`); a **muted** thread stays quiet even when its tool reads every reply (`/speak off`, the mute buttons). **Read every reply** (`autoRead`) is a tool's always-on switch. **Reading off** is the overall switch (`readingOffUntil`), which beats all of them; asking for a reply always plays. The **engine** is the on-device mlx-audio server on 127.0.0.1:8909. A **voice** is a speaker within an engine.
 
 ## Docs and who reads them
 

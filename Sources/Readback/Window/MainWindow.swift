@@ -179,7 +179,10 @@ struct MainView: View {
             VoicesPage(prefs: app.prefs, runtime: app.runtime, downloads: app.downloads,
                        preview: app.preview, downloadNow: app.downloadVoice, download: app.download, cancelDownload: app.cancelDownload)
         case .reading:
-            Page(title: "Reading") { ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition) }
+            Page(title: "Reading") {
+                ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition,
+                                setReading: { on in on ? app.turnReadingOn() : app.turnReadingOff(until: .distantFuture) })
+            }
         case .connections:
             Page(title: "Connections") { ConnectionSettings(connections: app.connections, replies: app.replies) }
         case .about:

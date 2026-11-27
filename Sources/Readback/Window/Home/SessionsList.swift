@@ -19,7 +19,7 @@ struct SessionsList: View {
         VStack(spacing: 0) {
             ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
                 if index > 0 { WindowColors.hairline.frame(height: 1).padding(.leading, Spacing.l) }
-                SessionRow(app: app, session: session, reader: reader, open: openID == session.id,
+                SessionRow(app: app, session: session, reader: reader, prefs: app.prefs, open: openID == session.id,
                            seeAll: { openSession(session) }) {
                     withAnimation(reveal) { openID = openID == session.id ? nil : session.id }
                 }
@@ -41,6 +41,7 @@ private struct SessionRow: View {
     let app: AppDelegate
     let session: SessionSummary
     @ObservedObject var reader: Reader
+    @ObservedObject var prefs: Preferences
     let open: Bool
     let seeAll: () -> Void
     let toggle: () -> Void
@@ -51,6 +52,8 @@ private struct SessionRow: View {
     /// 20 pt line: where the mark's top edge goes.
     private static let capTop: CGFloat = 5
     private static let markSize: CGFloat = 30
+    /// Between the mute and play buttons.
+    private static let plateGap: CGFloat = 8
     /// How many replies an open session shows on Home; the rest are a click away in History.
     static let shown = 3
 
@@ -83,8 +86,8 @@ private struct SessionRow: View {
                             .padding(.top, 2)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // Room for the play button, which sits over the row's trailing edge.
-                    Color.clear.frame(width: ControlMetrics.smallHeight, height: 1)
+                    // Room for the mute and play buttons, which sit over the row's trailing edge.
+                    Color.clear.frame(width: ControlMetrics.smallHeight * 2 + Self.plateGap, height: 1)
                 }
                 .padding(.horizontal, Spacing.l)
                 .padding(.vertical, 14)
@@ -97,9 +100,16 @@ private struct SessionRow: View {
             .focused($focused)
             .overlay { KeyboardRingInside(focused: focused) }
             .overlay(alignment: .topTrailing) {
-                IconPlate("play.fill", help: playHelp) { app.play(session.newest) }
-                    .padding(.top, 14 + Self.capTop + (Self.markSize - ControlMetrics.smallHeight) / 2)
-                    .padding(.trailing, Spacing.l)
+                HStack(spacing: Self.plateGap) {
+                    // Mutes this thread: solid with a slash while muted (owner's mockup, 2026-11-26).
+                    IconPlate(muted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                              help: muted ? "Unmute \(session.project)" : "Mute \(session.project)", on: muted) {
+                        app.setMuted(session.id, !muted)
+                    }
+                    IconPlate("play.fill", help: playHelp) { app.play(session.newest) }
+                }
+                .padding(.top, 14 + Self.capTop + (Self.markSize - ControlMetrics.smallHeight) / 2)
+                .padding(.trailing, Spacing.l)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(session.project), \(meta)")
@@ -145,10 +155,12 @@ private struct SessionRow: View {
         .animation(.easeOut(duration: 0.15), value: hovering)
     }
 
+    private var muted: Bool { prefs.muted.contains(session.id) }
+
     private var meta: String {
         let tool = session.tool?.name ?? "Agent"
         let replies = session.count == 1 ? "1 reply" : "\(session.count) replies"
-        return "\(tool) · \(replies) · \(ShortTime.when(session.newest.received))"
+        return "\(tool)\(muted ? " · Muted" : "") · \(replies) · \(ShortTime.when(session.newest.received))"
     }
 
     private var playHelp: String { "Play \(session.project)'s newest reply" }
