@@ -99,6 +99,12 @@ private struct SessionRow: View {
             .focusEffectDisabled()
             .focused($focused)
             .overlay { KeyboardRingInside(focused: focused) }
+            // The row reads as one element; the buttons over it come after, so VoiceOver and
+            // keyboard access reach Mute and Play on their own (they were folded into the row).
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(session.project), \(meta)")
+            .accessibilityValue(open ? "open" : "closed")
+            .accessibilityHint("Shows this session's replies")
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: Self.plateGap) {
                     // Mutes this thread: solid with a slash while muted (owner's mockup, 2026-11-26).
@@ -111,10 +117,6 @@ private struct SessionRow: View {
                 .padding(.top, 14 + Self.capTop + (Self.markSize - ControlMetrics.smallHeight) / 2)
                 .padding(.trailing, Spacing.l)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(session.project), \(meta)")
-            .accessibilityValue(open ? "open" : "closed")
-            .accessibilityHint("Shows this session's replies")
 
             if open {
                 VStack(alignment: .leading, spacing: 6) {

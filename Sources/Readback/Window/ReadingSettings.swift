@@ -21,6 +21,8 @@ struct ReadingSettings: View {
                     Text("Read replies out loud")
                     if let until = prefs.readingOffUntil {
                         Text(ReadingOff.status(until: until, now: Date()).replacingOccurrences(of: "Reading is off", with: "Off"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .accessibilityLabel("Read replies out loud")
