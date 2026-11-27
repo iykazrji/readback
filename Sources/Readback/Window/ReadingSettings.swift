@@ -10,7 +10,7 @@ struct ReadingSettings: View {
     /// Reading back on, or off for one of the three lengths (AppDelegate: stops what's reading,
     /// swaps the menu bar icon).
     let turnReadingOn: () -> Void
-    let turnReadingOff: (ReadingOff.Length) -> Void
+    let turnReadingOff: (ReadingOff.Choice) -> Void
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
@@ -23,9 +23,7 @@ struct ReadingSettings: View {
             Section {
                 LabeledContent {
                     if prefs.readingOffUntil == nil {
-                        MenuButton(title: "Turn reading off",
-                                   items: { ReadingOff.Length.allCases.map { $0.menuTitle(now: Date()) } },
-                                   choose: { turnReadingOff(ReadingOff.Length.allCases[$0]) })
+                        TurnReadingOffButton(turnOff: turnReadingOff)
                     } else {
                         Button("Turn on", action: turnReadingOn)
                             .buttonStyle(.readback(.primary))

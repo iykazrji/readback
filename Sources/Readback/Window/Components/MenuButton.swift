@@ -1,4 +1,5 @@
 import AppKit
+import ReadbackCore
 import SwiftUI
 
 /// A button that opens Readback's own menu of actions, with nothing in it chosen: "Turn reading
@@ -7,12 +8,17 @@ import SwiftUI
 /// "let the dropdown look like a button"). The menu is the one Dropdown shows, so it opens above
 /// the button when there's no room below, and the keyboard works the same.
 struct MenuButton: View {
+    struct Item {
+        let title: String
+        let action: () -> Void
+    }
+
     let title: String
     var kind: ReadbackButtonStyle.Kind = .secondary
     var fullWidth = false
-    /// Worked out when the menu opens, so "Until 8 AM" is true at that moment.
-    let items: () -> [String]
-    let choose: (Int) -> Void
+    /// Worked out when the menu opens, each title with what it does, so a pick does what its words
+    /// said then ("Until 8 AM" is true at that moment, and stays the 8 AM it named).
+    let items: () -> [Item]
     @ObservedObject private var presenter = DropdownPresenter.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var anchor = AnchorView.Box()
@@ -33,14 +39,27 @@ struct MenuButton: View {
     private func toggle() {
         if presenter.openID == id { presenter.close(); return }
         guard let view = anchor.view, let window = view.window else { return }
-        let titles = items()
+        let entries = items()
         let rect = window.convertToScreen(view.convert(view.bounds, to: nil))
         presenter.show(DropdownMenu(
             id: id,
             label: title,
-            sections: [(title: nil, items: titles)],
+            sections: [(title: nil, items: entries.map(\.title))],
             selected: nil,
-            choose: { index in if titles.indices.contains(index) { choose(index) } }
+            choose: { index in if entries.indices.contains(index) { entries[index].action() } }
         ), below: rect, in: window, reduceMotion: reduceMotion)
+    }
+}
+
+/// "Turn reading off" with the menu bar's three lengths, for the sidebar and the Reading page.
+/// The lengths are worked out in Core when the menu opens (`ReadingOff.Choice`).
+struct TurnReadingOffButton: View {
+    var fullWidth = false
+    let turnOff: (ReadingOff.Choice) -> Void
+
+    var body: some View {
+        MenuButton(title: "Turn reading off", fullWidth: fullWidth) {
+            ReadingOff.Choice.all(now: Date()).map { choice in .init(title: choice.title) { turnOff(choice) } }
+        }
     }
 }

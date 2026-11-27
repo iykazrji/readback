@@ -181,7 +181,7 @@ struct MainView: View {
         case .reading:
             Page(title: "Reading") {
                 ReadingSettings(prefs: app.prefs, reader: app.reader, resetPosition: app.resetPanelPosition,
-                                turnReadingOn: { app.turnReadingOn() }, turnReadingOff: { app.turnReadingOff(for: $0) })
+                                turnReadingOn: { app.turnReadingOn() }, turnReadingOff: { app.turnReadingOff($0) })
             }
         case .connections:
             Page(title: "Connections") { ConnectionSettings(connections: app.connections, replies: app.replies) }
@@ -445,9 +445,7 @@ private struct ReadingCard: View {
             }
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.secondary)
-            MenuButton(title: "Turn reading off", fullWidth: true,
-                       items: { ReadingOff.Length.allCases.map { $0.menuTitle(now: Date()) } },
-                       choose: { app.turnReadingOff(for: ReadingOff.Length.allCases[$0]) })
+            TurnReadingOffButton(fullWidth: true) { app.turnReadingOff($0) }
         }
     }
 

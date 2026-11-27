@@ -491,9 +491,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         readingSwitchChanged()
     }
 
-    /// The menu bar's, the sidebar's or Reading's Turn reading off, for one of the three lengths.
-    func turnReadingOff(for length: ReadingOff.Length) {
-        turnReadingOff(until: length.until(from: Date()))
+    /// The menu bar's, the sidebar's or Reading's Turn reading off, for the length picked in a menu.
+    /// "Until 8 AM" picked from a menu left open past 8 AM changes nothing: its quiet is over.
+    func turnReadingOff(_ choice: ReadingOff.Choice) {
+        guard let until = choice.until(pickedAt: Date()) else {
+            Log.info("reading left on: \"\(choice.title)\" had already passed when it was picked")
+            return
+        }
+        turnReadingOff(until: until)
     }
 
     func turnReadingOn() {
@@ -745,10 +750,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if off == nil {
             let item = NSMenuItem(title: "Turn reading off", action: nil, keyEquivalent: "")
             let choices = NSMenu()
-            for length in ReadingOff.Length.allCases {
-                let choice = NSMenuItem(title: length.menuTitle(now: now), action: #selector(offFromMenu(_:)), keyEquivalent: "").withTarget(self)
-                choice.representedObject = length.rawValue
-                choices.addItem(choice)
+            for choice in ReadingOff.Choice.all(now: now) {
+                let entry = NSMenuItem(title: choice.title, action: #selector(offFromMenu(_:)), keyEquivalent: "").withTarget(self)
+                entry.representedObject = choice
+                choices.addItem(entry)
             }
             item.submenu = choices
             menu.addItem(item)
@@ -768,8 +773,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func replay() { if let newest = replies.newest { play(newest) } }
     @objc private func stopFromMenu() { stopEverything() }
     @objc private func offFromMenu(_ sender: NSMenuItem) {
-        guard let length = (sender.representedObject as? String).flatMap(ReadingOff.Length.init(rawValue:)) else { return }
-        turnReadingOff(for: length)
+        guard let choice = sender.representedObject as? ReadingOff.Choice else { return }
+        turnReadingOff(choice)
     }
     @objc private func turnOnFromMenu() { turnReadingOn() }
 }

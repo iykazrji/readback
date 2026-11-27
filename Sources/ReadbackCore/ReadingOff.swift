@@ -43,17 +43,8 @@ public enum ReadingOff {
     /// How long reading stays off. The menu bar, the window's sidebar and Reading all offer these
     /// three under "Turn reading off" (owner, 2026-11-27: the window got the times too, not only
     /// the menu bar).
-    public enum Length: String, CaseIterable, Sendable {
+    public enum Length: CaseIterable, Sendable {
         case hour, morning, untilOn
-
-        /// When reading comes back: `Date.distantFuture` for "until I turn it back on".
-        public func until(from now: Date, calendar: Calendar = .current) -> Date {
-            switch self {
-            case .hour: return ReadingOff.forAnHour(from: now)
-            case .morning: return ReadingOff.nextMorning(after: now, calendar: calendar)
-            case .untilOn: return .distantFuture
-            }
-        }
 
         /// The menu's words under "Turn reading off", in the menu bar, the sidebar and Reading:
         /// "For 1 hour", "Until 8 AM tomorrow" ("Until 8 AM" in the small hours), "Until I turn it
@@ -63,6 +54,36 @@ public enum ReadingOff {
             case .hour: return "For 1 hour"
             case .morning: return ReadingOff.morningLabel(now: now, calendar: calendar, locale: locale)
             case .untilOn: return "Until I turn it back on"
+            }
+        }
+    }
+
+    /// One of the three lengths as a menu shows it, worked out when the menu opens. A menu can sit
+    /// open while the clock moves on, and a pick still means what the menu said: "Until 8 AM" seen
+    /// at 7:59 and picked at 8:01 doesn't turn reading off until 8 AM the next day (review round 1,
+    /// 2026-11-27).
+    public struct Choice: Sendable {
+        public let length: Length
+        public let title: String
+        /// The 8 AM the menu named when it opened.
+        let morning: Date
+
+        /// The three, in the menu's order, as they read when the menu opens at `now`.
+        public static func all(now: Date, calendar: Calendar = .current, locale: Locale = .current) -> [Choice] {
+            let morning = ReadingOff.nextMorning(after: now, calendar: calendar)
+            return Length.allCases.map {
+                Choice(length: $0, title: $0.menuTitle(now: now, calendar: calendar, locale: locale), morning: morning)
+            }
+        }
+
+        /// When reading comes back if this is picked at `now`: an hour from the pick, the 8 AM the
+        /// menu named, or `Date.distantFuture` (until turned back on). Nil when the 8 AM it named has
+        /// already come: then nothing changes, because the quiet it offered is over.
+        public func until(pickedAt now: Date) -> Date? {
+            switch length {
+            case .hour: return ReadingOff.forAnHour(from: now)
+            case .morning: return morning > now ? morning : nil
+            case .untilOn: return .distantFuture
             }
         }
     }
