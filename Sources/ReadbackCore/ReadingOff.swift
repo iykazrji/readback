@@ -40,9 +40,9 @@ public enum ReadingOff {
         describe(until: until, now: now, calendar: calendar, locale: locale).map { "Reading is off until \($0)" } ?? "Reading is off"
     }
 
-    /// How long reading stays off. The menu bar, Home's top row and Reading's switch all offer
-    /// these three, and remember the last one picked (owner, 2026-11-27: Home and Reading got the
-    /// times too, not only the menu bar). Saved by its raw value.
+    /// How long reading stays off. The menu bar, the window's sidebar and Reading all offer these
+    /// three under "Turn reading off" (owner, 2026-11-27: the window got the times too, not only
+    /// the menu bar).
     public enum Length: String, CaseIterable, Sendable {
         case hour, morning, untilOn
 
@@ -55,21 +55,15 @@ public enum ReadingOff {
             }
         }
 
-        /// Under the menu bar's "Turn reading off ›": "For 1 hour", "Until 8 AM tomorrow" ("Until
-        /// 8 AM" in the small hours), "Until I turn it back on".
+        /// The menu's words under "Turn reading off", in the menu bar, the sidebar and Reading:
+        /// "For 1 hour", "Until 8 AM tomorrow" ("Until 8 AM" in the small hours), "Until I turn it
+        /// back on".
         public func menuTitle(now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
             switch self {
             case .hour: return "For 1 hour"
             case .morning: return ReadingOff.morningLabel(now: now, calendar: calendar, locale: locale)
             case .untilOn: return "Until I turn it back on"
             }
-        }
-
-        /// Beside a switch that's on, where "For 1 hour" would read as "read for 1 hour": "Off for
-        /// 1 hour", "Off until 8 AM tomorrow", "Off until I turn it back on".
-        public func choice(now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
-            let title = menuTitle(now: now, calendar: calendar, locale: locale)
-            return "Off \(title.prefix(1).lowercased())\(title.dropFirst())"
         }
     }
 }

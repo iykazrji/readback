@@ -171,7 +171,7 @@ import Testing
 
     // MARK: The three lengths, in every place that offers them
 
-    /// The menu bar, Home and Reading offer the same three, in this order (owner, 2026-11-27).
+    /// The menu bar, the sidebar and Reading offer the same three, in this order (owner, 2026-11-27).
     @Test func eachLengthEndsWhenItSays() {
         #expect(ReadingOff.Length.allCases == [.hour, .morning, .untilOn])
         #expect(ReadingOff.Length.hour.until(from: at(16, 12), calendar: calendar) == at(17, 12))
@@ -180,22 +180,15 @@ import Testing
         #expect(ReadingOff.Length.untilOn.until(from: at(16), calendar: calendar) == .distantFuture)
     }
 
-    /// Under the menu's "Turn reading off ›" they read as before; beside Home's and Reading's
-    /// switch they start with "Off", so "For 1 hour" never reads as "read replies for 1 hour".
-    @Test func eachLengthIsSaidForWhereItShows() {
+    /// Each finishes "Turn reading off": the same words wherever the menu opens.
+    @Test func eachLengthFinishesTurnReadingOff() {
         let us = Locale(identifier: "en_US")
         let nnbsp = "\u{202F}"
         func menu(_ length: ReadingOff.Length, _ now: Date) -> String { length.menuTitle(now: now, calendar: calendar, locale: us) }
-        func choice(_ length: ReadingOff.Length, _ now: Date) -> String { length.choice(now: now, calendar: calendar, locale: us) }
         #expect(menu(.hour, at(16)) == "For 1 hour")
         #expect(menu(.morning, at(16)) == "Until 8\(nnbsp)AM tomorrow")
         #expect(menu(.morning, at(2)) == "Until 8\(nnbsp)AM")
         #expect(menu(.untilOn, at(16)) == "Until I turn it back on")
-        #expect(choice(.hour, at(16)) == "Off for 1 hour")
-        #expect(choice(.morning, at(16)) == "Off until 8\(nnbsp)AM tomorrow")
-        #expect(choice(.morning, at(2)) == "Off until 8\(nnbsp)AM")
-        #expect(choice(.untilOn, at(16)) == "Off until I turn it back on")
-        #expect(ReadingOff.Length(rawValue: "hour") == .hour, "saved by its raw value")
     }
 
     // MARK: Copy
