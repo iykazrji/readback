@@ -22,7 +22,7 @@ It downloads the app, connects the tools it finds, and tells you the one step on
 
 - Connecting a tool switches on reading every reply from it out loud. Switch that off for a tool in Readback's **Reading** page.
 - To quiet one noisy session, mute it: the speaker button in the player while it reads, the one on its row on Home, or `/readback:speak off` in a Claude Code session (`/speak off` in a Codex chat; OpenCode has no command, so use the buttons). `/readback:speak on` brings it back, and `/readback:read` reads the last reply again.
-- To quiet everything, use the menu bar icon's **Turn reading off**: for an hour, until 8 AM, or until you turn it back on. The icon shows a slash while it's off.
+- To quiet everything, use **Turn reading off** at the bottom of the sidebar or in the menu bar icon's menu: for an hour, until 8 AM, or until you turn it back on. The icon shows a slash while it's off, and the sidebar says until when.
 - The menu bar icon's **Read last reply** works from anywhere, even with reading off.
 
 ## Building it
