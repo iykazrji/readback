@@ -10,7 +10,7 @@
 #   Contents/Resources/AppIcon.icns, MenuBarIcon(@2x).png, ThirdPartyNotices.txt
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-0.5.2}"
+VERSION="${VERSION:-0.5.3}"
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 
 UV="${UV:-$(command -v uv || true)}"
