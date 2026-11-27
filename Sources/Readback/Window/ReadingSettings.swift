@@ -32,9 +32,13 @@ struct ReadingSettings: View {
                 } label: {
                     Text("Read replies out loud")
                     if let until = prefs.readingOffUntil {
-                        Text(ReadingOff.status(until: until, now: Date()).replacingOccurrences(of: "Reading is off", with: "Off"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        // The same minute tick as the sidebar's card, so past midnight both say
+                        // "until 8 AM" rather than one of them still saying "tomorrow".
+                        TimelineView(.everyMinute) { context in
+                            Text(ReadingOff.status(until: until, now: context.date).replacingOccurrences(of: "Reading is off", with: "Off"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             } footer: {
