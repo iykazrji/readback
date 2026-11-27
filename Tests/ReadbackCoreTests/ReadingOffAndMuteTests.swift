@@ -169,6 +169,18 @@ import Testing
         #expect(ReadingOff.status(until: .distantFuture, now: at(16), calendar: calendar, locale: us) == "Reading is off")
     }
 
+    // MARK: Copy
+
+    /// The Reading footer broke "/readback:speak on" after its slash (UI check, 2026-11-26).
+    @Test func aCommandsSlashStaysWithItsName() {
+        let joiner = "\u{2060}"
+        let footer = SlashCommand.keptWhole(in: "/readback:speak off mutes one session, /readback:speak on reads one, and /read.")
+        #expect(footer == "/\(joiner)readback:speak off mutes one session, /\(joiner)readback:speak on reads one, and /\(joiner)read.")
+        #expect(footer.replacingOccurrences(of: joiner, with: "") == "/readback:speak off mutes one session, /readback:speak on reads one, and /read.")
+        let untouched = "Edits ~/.claude/settings.json, and/or keeps <name>.before-readback. A lone / stays."
+        #expect(SlashCommand.keptWhole(in: untouched) == untouched)
+    }
+
     // MARK: The queue
 
     @Test func mutingAThreadStopsItsReadingAndKeepsItsWaitingReplies() {

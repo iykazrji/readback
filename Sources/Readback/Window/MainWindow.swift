@@ -502,7 +502,8 @@ struct FormNote: View {
     init(_ text: String) { self.text = text }
 
     var body: some View {
-        Text(text)
+        // A command like /readback:speak wraps as a whole, never after its slash.
+        Text(SlashCommand.keptWhole(in: text))
             .font(.callout)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.leading)
