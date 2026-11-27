@@ -70,6 +70,12 @@ public struct ReadingSwitches {
         list(Self.mutedKey).contains(thread)
     }
 
+    /// On by /speak on and not muted: what `readback session <id>` reports. A mute keeps the
+    /// /speak on underneath for the unmute, so `isSessionOn` alone can be true while it's quiet.
+    public func isSessionOnAndUnmuted(_ thread: String) -> Bool {
+        isSessionOn(thread) && !isMuted(thread)
+    }
+
     /// Every muted thread, oldest first.
     public var mutedThreads: [String] { list(Self.mutedKey) }
 

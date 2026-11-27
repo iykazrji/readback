@@ -423,7 +423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return HTTPResponse.json(200, ["played": false])
         case .session(let body):
             if let enabled = body.enabled { setSession(body.session, enabled) }
-            return HTTPResponse.json(200, ["session": body.session, "enabled": prefs.isSessionOn(body.session)])
+            return HTTPResponse.json(200, ["session": body.session, "enabled": prefs.switches.isSessionOnAndUnmuted(body.session)])
         case .auto(let body):
             if let enabled = body.enabled { prefs.setReadsEveryReply(body.tool, enabled) }
             return HTTPResponse.json(200, ["tool": body.tool.rawValue, "enabled": prefs.readsEveryReply(body.tool)])
@@ -475,7 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The player's mute: the thread of the reply being read, and the player says it's muted with
     /// a way back for its usual few seconds.
     func muteCurrentThread() {
-        guard reader.isActive, let thread = reader.thread else { return }
+        guard reader.isActive, let thread = reader.thread, !prefs.isMuted(thread.key) else { return }
         replies.mutedNotice = Replies.MutedNotice(thread: thread.key, project: thread.name)
         setMuted(thread.key, true)
     }

@@ -65,6 +65,20 @@ import Testing
         }
     }
 
+    /// `readback session <id>` says on only while the thread reads by /speak on: a mute beats it,
+    /// even though the /speak on is kept for the unmute (review round 2, 2026-11-26).
+    @Test func aMutedThreadIsntReportedOn() {
+        withSwitches { switches in
+            switches.setSession("t", true)
+            #expect(switches.isSessionOnAndUnmuted("t"))
+            switches.setMuted("t", true)
+            #expect(switches.isSessionOn("t"))
+            #expect(!switches.isSessionOnAndUnmuted("t"))
+            switches.setMuted("t", false)
+            #expect(switches.isSessionOnAndUnmuted("t"))
+        }
+    }
+
     /// OpenCode's plugin sends its session id and folder, so each OpenCode chat is its own thread,
     /// the same row Home shows; a mute holds for that chat and not its neighbour in the folder.
     @Test func anOpenCodeChatFromTheRealHookIsItsOwnThread() throws {

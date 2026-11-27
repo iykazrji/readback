@@ -150,9 +150,11 @@ struct PlayerView: View {
     /// One quiet line while a reply reads in the macOS voice because the engine isn't in: where
     /// the person hears the flat voice is where they learn there's another (owner, 2026-11-26).
     /// The thread of the reply being read, as Home names it; nil for a voice sample or nothing.
+    /// nil too when the thread is already muted (a reply of it played because it was asked for):
+    /// there's nothing to mute, and its note's Unmute would undo a mute made elsewhere.
     private var currentProject: String? {
-        guard reader.isActive else { return nil }
-        return reader.thread?.name
+        guard reader.isActive, let thread = reader.thread, !prefs.muted.contains(thread.key) else { return nil }
+        return thread.name
     }
 
     /// "Reading with…" while it reads; once it's done and kept open, what it was read with.
