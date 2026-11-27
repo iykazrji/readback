@@ -169,6 +169,52 @@ import Testing
         #expect(ReadingOff.status(until: .distantFuture, now: at(16), calendar: calendar, locale: us) == "Reading is off")
     }
 
+    // MARK: The three lengths, in every place that offers them
+
+    /// The menu bar, the sidebar and Reading offer the same three, in this order (owner, 2026-11-27).
+    @Test func eachLengthEndsWhenItSays() {
+        #expect(ReadingOff.Length.allCases == [.hour, .morning, .untilOn])
+        func pick(_ length: ReadingOff.Length, at now: Date) -> Date? {
+            ReadingOff.Choice.all(now: now, calendar: calendar).first { $0.length == length }?.until(pickedAt: now)
+        }
+        #expect(ReadingOff.Choice.all(now: at(16), calendar: calendar).map(\.length) == ReadingOff.Length.allCases)
+        #expect(pick(.hour, at: at(16, 12)) == at(17, 12))
+        #expect(pick(.morning, at: at(16, 12)) == at(8, day: 27))
+        #expect(pick(.morning, at: at(2)) == at(8))
+        #expect(pick(.untilOn, at: at(16)) == .distantFuture)
+    }
+
+    /// A menu can sit open while the clock moves on. A pick means what the menu said when it
+    /// opened: opened at 7:59 saying "Until 8 AM" and picked at 8:01, it doesn't turn reading off
+    /// until 8 AM the next day (review round 1, 2026-11-27). For 1 hour counts from the pick.
+    @Test func aPickMeansWhatTheMenuSaidWhenItOpened() {
+        let us = Locale(identifier: "en_US")
+        let opened = ReadingOff.Choice.all(now: at(7, 59), calendar: calendar, locale: us)
+        func choice(_ length: ReadingOff.Length) -> ReadingOff.Choice { opened.first { $0.length == length }! }
+        #expect(choice(.morning).title == "Until 8\u{202F}AM")
+        #expect(choice(.morning).until(pickedAt: at(7, 59).addingTimeInterval(30)) == at(8))
+        #expect(choice(.morning).until(pickedAt: at(8, 1)) == nil)
+        #expect(choice(.hour).until(pickedAt: at(8, 1)) == at(9, 1))
+        #expect(choice(.untilOn).until(pickedAt: at(8, 1)) == .distantFuture)
+
+        // Opened just before midnight, picked just after: "8 AM tomorrow" is still the same 8 AM.
+        let lateNight = ReadingOff.Choice.all(now: at(23, 59), calendar: calendar, locale: us)
+        let morning = lateNight.first { $0.length == .morning }!
+        #expect(morning.title == "Until 8\u{202F}AM tomorrow")
+        #expect(morning.until(pickedAt: at(0, 1, day: 27)) == at(8, day: 27))
+    }
+
+    /// Each finishes "Turn reading off": the same words wherever the menu opens.
+    @Test func eachLengthFinishesTurnReadingOff() {
+        let us = Locale(identifier: "en_US")
+        let nnbsp = "\u{202F}"
+        func menu(_ length: ReadingOff.Length, _ now: Date) -> String { length.menuTitle(now: now, calendar: calendar, locale: us) }
+        #expect(menu(.hour, at(16)) == "For 1 hour")
+        #expect(menu(.morning, at(16)) == "Until 8\(nnbsp)AM tomorrow")
+        #expect(menu(.morning, at(2)) == "Until 8\(nnbsp)AM")
+        #expect(menu(.untilOn, at(16)) == "Until I turn it back on")
+    }
+
     // MARK: Copy
 
     /// The Reading footer broke "/readback:speak on" after its slash (UI check, 2026-11-26).

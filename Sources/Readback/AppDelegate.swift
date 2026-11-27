@@ -491,6 +491,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         readingSwitchChanged()
     }
 
+    /// The menu bar's, the sidebar's or Reading's Turn reading off, for the length picked in a menu.
+    /// "Until 8 AM" picked from a menu left open past 8 AM changes nothing: its quiet is over.
+    func turnReadingOff(_ choice: ReadingOff.Choice) {
+        guard let until = choice.until(pickedAt: Date()) else {
+            Log.info("reading left on: \"\(choice.title)\" had already passed when it was picked")
+            return
+        }
+        turnReadingOff(until: until)
+    }
+
     func turnReadingOn() {
         prefs.setReadingOff(until: nil)
         readingSwitchChanged()
@@ -740,9 +750,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if off == nil {
             let item = NSMenuItem(title: "Turn reading off", action: nil, keyEquivalent: "")
             let choices = NSMenu()
-            choices.addItem(NSMenuItem(title: "For 1 hour", action: #selector(offForAnHour), keyEquivalent: "").withTarget(self))
-            choices.addItem(NSMenuItem(title: ReadingOff.morningLabel(now: now), action: #selector(offUntilMorning), keyEquivalent: "").withTarget(self))
-            choices.addItem(NSMenuItem(title: "Until I turn it back on", action: #selector(offUntilTurnedOn), keyEquivalent: "").withTarget(self))
+            for choice in ReadingOff.Choice.all(now: now) {
+                let entry = NSMenuItem(title: choice.title, action: #selector(offFromMenu(_:)), keyEquivalent: "").withTarget(self)
+                entry.representedObject = choice
+                choices.addItem(entry)
+            }
             item.submenu = choices
             menu.addItem(item)
             menu.addItem(.separator())
@@ -760,9 +772,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func replay() { if let newest = replies.newest { play(newest) } }
     @objc private func stopFromMenu() { stopEverything() }
-    @objc private func offForAnHour() { turnReadingOff(until: ReadingOff.forAnHour(from: Date())) }
-    @objc private func offUntilMorning() { turnReadingOff(until: ReadingOff.nextMorning(after: Date())) }
-    @objc private func offUntilTurnedOn() { turnReadingOff(until: .distantFuture) }
+    @objc private func offFromMenu(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? ReadingOff.Choice else { return }
+        turnReadingOff(choice)
+    }
     @objc private func turnOnFromMenu() { turnReadingOn() }
 }
 

@@ -54,6 +54,7 @@ struct Dropdown<Value: Hashable>: View {
         .buttonStyle(.readback(.secondary))
         .focusEffectDisabled()   // the style draws its own neutral keyboard ring
         .background(AnchorView(box: anchor))
+        .closesItsMenu(id, presenter: presenter)
         // On the button itself, so VoiceOver's press still opens it (a replacement element
         // made with .accessibilityElement(children: .ignore) had no action).
         .accessibilityLabel(label)
@@ -76,8 +77,18 @@ struct Dropdown<Value: Hashable>: View {
     }
 }
 
-/// The button's place on screen, for the menu to open under.
-private struct AnchorView: NSViewRepresentable {
+extension View {
+    /// A menu belongs to the button that opened it. When the button moves (a card above it grew,
+    /// the page scrolled) or goes away, its open menu closes instead of floating where the button
+    /// was and acting for a button that isn't there (review, 2026-11-27).
+    func closesItsMenu(_ id: UUID, presenter: DropdownPresenter) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { _ in presenter.close(ifOpen: id) }
+            .onDisappear { presenter.close(ifOpen: id) }
+    }
+}
+
+/// The button's place on screen, for the menu to open under. MenuButton uses it too.
+struct AnchorView: NSViewRepresentable {
     final class Box { weak var view: NSView? }
     let box: Box
 
@@ -111,7 +122,11 @@ final class DropdownPresenter: ObservableObject {
     func show(_ menu: DropdownMenu, below anchor: NSRect, in parent: NSWindow, reduceMotion: Bool) {
         close()
         let size = MenuPanel.size(for: menu, minWidth: anchor.width)
-        let visible = (parent.screen ?? NSScreen.main)?.visibleFrame ?? parent.frame
+        // The button's own display, not the window's: a window across two displays reports the
+        // one holding most of it, and the sidebar's button can sit on the other (review, 2026-11-27).
+        let middle = NSPoint(x: anchor.midX, y: anchor.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(middle) } ?? parent.screen ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? parent.frame
         let gap: CGFloat = 4, margin: CGFloat = 8
         var origin = NSPoint(x: anchor.minX, y: anchor.minY - gap - size.height)
         var opensUp = false
@@ -139,6 +154,11 @@ final class DropdownPresenter: ObservableObject {
         resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.close() }
         }
+    }
+
+    /// Closes the menu only if it's that button's, so one button going away can't close another's.
+    func close(ifOpen id: UUID) {
+        if openID == id { close() }
     }
 
     func close() {

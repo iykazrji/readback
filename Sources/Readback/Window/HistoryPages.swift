@@ -19,13 +19,12 @@ struct HomePage: View {
 
     /// Home, top to bottom: what's reading now and what's next, the read-every-reply switches,
     /// recent sessions, and setup at a glance. One column (owner's pick), one 24 pt gap between
-    /// sections, laid out as the home-plates mockup the owner signed off on 2026-11-25.
+    /// sections, laid out as the home-plates mockup the owner signed off on 2026-11-25. Turning
+    /// reading off, and saying it's off, is the sidebar's Reading card, on every page (owner,
+    /// 2026-11-27).
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.xl) {
-                if prefs.readingOffUntil != nil {
-                    ReadingOffBanner(prefs: prefs) { app.turnReadingOn() }
-                }
                 NowCard(app: app, reader: reader, replies: replies)
                 EveryReplyRow(prefs: prefs)
                 VStack(alignment: .leading, spacing: Spacing.s) {

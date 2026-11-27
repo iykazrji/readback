@@ -7,27 +7,42 @@ struct ReadingSettings: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var reader: Reader
     let resetPosition: () -> Void
-    /// Reading on, or off until switched back on (AppDelegate: stops what's reading, swaps the icon).
-    let setReading: (Bool) -> Void
+    /// Reading back on, or off for one of the three lengths (AppDelegate: stops what's reading,
+    /// swaps the menu bar icon).
+    let turnReadingOn: () -> Void
+    let turnReadingOff: (ReadingOff.Choice) -> Void
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
     var body: some View {
         Form {
-            // The overall switch, the same one as the menu bar's (owner's mockup, 2026-11-26).
-            // Switching it off here means until it's switched back on; the menu bar has the timed ones.
+            // The overall switch, the same one as the menu bar's and the sidebar's (owner's mockup,
+            // 2026-11-26), as the same action with the same three lengths (owner, 2026-11-27:
+            // before that it was a switch here, off until switched back on, and only the menu bar
+            // had the times).
             Section {
-                Toggle(isOn: Binding(get: { prefs.readingOffUntil == nil }, set: { setReading($0) })) {
+                LabeledContent {
+                    if prefs.readingOffUntil == nil {
+                        TurnReadingOffButton(turnOff: turnReadingOff)
+                    } else {
+                        Button("Turn on", action: turnReadingOn)
+                            .buttonStyle(.readback(.primary))
+                            .controlSize(.small)
+                    }
+                } label: {
                     Text("Read replies out loud")
                     if let until = prefs.readingOffUntil {
-                        Text(ReadingOff.status(until: until, now: Date()).replacingOccurrences(of: "Reading is off", with: "Off"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        // The same minute tick as the sidebar's card, so past midnight both say
+                        // "until 8 AM" rather than one of them still saying "tomorrow".
+                        TimelineView(.everyMinute) { context in
+                            Text(ReadingOff.status(until: until, now: context.date).replacingOccurrences(of: "Reading is off", with: "Off"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                .accessibilityLabel("Read replies out loud")
             } footer: {
-                FormNote("Off stops everything that reads by itself, for every tool and thread. Replies still go to History, and asking for one still plays it. The menu bar icon can also turn it off for an hour or until 8 AM.")
+                FormNote("Off stops everything that reads by itself, for every tool and thread, for as long as you pick: an hour, until 8\u{00A0}AM, or until you turn it back on. Replies still go to History, and asking for one still plays it. The sidebar and the menu bar icon can turn it off too.")
             }
 
             Section {
