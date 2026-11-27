@@ -32,6 +32,7 @@ struct MenuButton: View {
         .controlSize(.small)
         .focusEffectDisabled()   // the style draws its own neutral keyboard ring
         .background(AnchorView(box: anchor))
+        .closesItsMenu(id, presenter: presenter)
         .accessibilityLabel(title)
         .accessibilityHint("Opens a menu")
     }

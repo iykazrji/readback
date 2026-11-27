@@ -54,6 +54,7 @@ struct Dropdown<Value: Hashable>: View {
         .buttonStyle(.readback(.secondary))
         .focusEffectDisabled()   // the style draws its own neutral keyboard ring
         .background(AnchorView(box: anchor))
+        .closesItsMenu(id, presenter: presenter)
         // On the button itself, so VoiceOver's press still opens it (a replacement element
         // made with .accessibilityElement(children: .ignore) had no action).
         .accessibilityLabel(label)
@@ -73,6 +74,16 @@ struct Dropdown<Value: Hashable>: View {
             selected: all.firstIndex { $0.value == selection },
             choose: { index in if all.indices.contains(index) { selection = all[index].value } }
         ), below: rect, in: window, reduceMotion: reduceMotion)
+    }
+}
+
+extension View {
+    /// A menu belongs to the button that opened it. When the button moves (a card above it grew,
+    /// the page scrolled) or goes away, its open menu closes instead of floating where the button
+    /// was and acting for a button that isn't there (review, 2026-11-27).
+    func closesItsMenu(_ id: UUID, presenter: DropdownPresenter) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { _ in presenter.close(ifOpen: id) }
+            .onDisappear { presenter.close(ifOpen: id) }
     }
 }
 
@@ -143,6 +154,11 @@ final class DropdownPresenter: ObservableObject {
         resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.close() }
         }
+    }
+
+    /// Closes the menu only if it's that button's, so one button going away can't close another's.
+    func close(ifOpen id: UUID) {
+        if openID == id { close() }
     }
 
     func close() {
